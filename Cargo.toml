@@ -1,0 +1,33 @@
+[package]
+name = "dravya"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "GPL-3.0"
+description = "Dravya — material science engine for stress, strain, elasticity, and fatigue analysis"
+homepage = "https://github.com/MacCracken/dravya"
+repository = "https://github.com/MacCracken/dravya"
+readme = "README.md"
+documentation = "https://docs.rs/dravya"
+keywords = ["materials", "stress", "strain", "elasticity", "engineering"]
+categories = ["science", "simulation"]
+exclude = [".claude/", ".github/", "docs/", "scripts/"]
+
+[features]
+default = []
+logging = ["dep:tracing-subscriber"]
+
+[dependencies]
+hisab = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+serde_json = "1"
+
+[[bench]]
+name = "benchmarks"
+harness = false
