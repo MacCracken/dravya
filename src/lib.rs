@@ -58,10 +58,11 @@ pub use yield_criteria::{
 // Fatigue
 pub use fatigue::{
     basquin_cycles, basquin_cycles_reversals, coffin_manson_strain, coffin_manson_transition_life,
-    endurance_limit_estimate, gerber_correction, goodman_correction, is_fatigue_failure,
-    marin_corrected_endurance, marin_reliability_factor, marin_size_factor, marin_surface_factor,
-    miners_rule, neuber_product, neuber_ramberg_osgood, rainflow_count, sn_interpolate,
-    soderberg_correction, stress_amplitude_mean, stress_ratio,
+    endurance_limit_estimate, extract_turning_points, gerber_correction, goodman_correction,
+    is_fatigue_failure, marin_corrected_endurance, marin_reliability_factor, marin_size_factor,
+    marin_surface_factor, miners_rule, neuber_product, neuber_ramberg_osgood, rainflow_count,
+    rainflow_count_periodic, sn_interpolate, soderberg_correction, stress_amplitude_mean,
+    stress_ratio,
 };
 
 // Strain
@@ -69,17 +70,18 @@ pub use strain::{engineering_strain, true_strain, try_engineering_strain, try_tr
 
 // Constitutive
 pub use constitutive::{
-    CombinedHardening, IsotropicHardening, KinematicHardening, bilinear_hardening,
-    compliance_matrix, elastic_perfectly_plastic, elastic_perfectly_plastic_material,
-    ramberg_osgood_strain, ramberg_osgood_stress, stiffness_matrix, strain_from_stress_3d,
-    stress_from_strain_3d,
+    CombinedHardening, IsotropicHardening, JohnsonCook, KinematicHardening, NeoHookean,
+    Orthotropic3D, bilinear_hardening, compliance_matrix, elastic_perfectly_plastic,
+    elastic_perfectly_plastic_material, ramberg_osgood_strain, ramberg_osgood_stress,
+    stiffness_matrix, strain_from_stress_3d, stress_from_strain_3d,
 };
 
 // Composite
 pub use composite::{
-    AbdMatrix, Lamina, Ply, PlyStress, abd_inverse, abd_matrix, max_stress_failure_index,
-    transform_stress_to_material, tsai_hill_failure_index, tsai_wu_failure_index,
-    tsai_wu_failure_index_custom,
+    AbdMatrix, DegradationFactors, HashinResult, Lamina, Ply, PlyStress, StrainAllowables,
+    abd_inverse, abd_matrix, hashin_failure, max_strain_failure_index, max_stress_failure_index,
+    progressive_failure, transform_stress_to_material, tsai_hill_failure_index,
+    tsai_wu_failure_index, tsai_wu_failure_index_custom,
 };
 
 // Fracture

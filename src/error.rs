@@ -13,8 +13,11 @@ pub enum DravyaError {
     InvalidStrain(String),
     #[error("yield exceeded: {0}")]
     YieldExceeded(String),
-    #[error("computation error: {0}")]
-    ComputationError(String),
+    #[error("solver did not converge: {method} after {iterations} iterations")]
+    SolverNoConvergence {
+        method: &'static str,
+        iterations: usize,
+    },
     #[error("division by zero: {0}")]
     DivisionByZero(&'static str),
     #[error("invalid parameter: {name} = {value} ({reason})")]
@@ -55,8 +58,21 @@ mod tests {
     }
 
     #[test]
+    fn solver_no_convergence_display() {
+        let e = DravyaError::SolverNoConvergence {
+            method: "newton_raphson",
+            iterations: 50,
+        };
+        assert!(e.to_string().contains("newton_raphson"));
+        assert!(e.to_string().contains("50"));
+    }
+
+    #[test]
     fn error_is_clone() {
-        let e = DravyaError::ComputationError("test".into());
+        let e = DravyaError::SolverNoConvergence {
+            method: "test",
+            iterations: 10,
+        };
         let e2 = e.clone();
         assert_eq!(e.to_string(), e2.to_string());
     }

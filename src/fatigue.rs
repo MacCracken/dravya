@@ -274,13 +274,15 @@ pub fn marin_corrected_endurance(base_endurance: f64, factors: &[f64]) -> f64 {
 
 // --- Rainflow cycle counting ---
 
-/// Extract fatigue cycles from a load history using the rainflow algorithm.
+/// Extract fatigue cycles from a load history using the rainflow algorithm
+/// (ASTM E1049-85 three-point method).
 ///
 /// Input: slice of stress peaks/valleys (turning points only — monotonic
 /// segments should be pre-filtered to extrema).
 ///
 /// Returns a list of (stress_range, mean_stress, count) tuples.
-/// Half-cycles are counted as 0.5.
+/// Half-cycles are counted as 0.5. For periodic signals, use
+/// [`rainflow_count_periodic`] which eliminates residue.
 #[must_use]
 pub fn rainflow_count(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
     if peaks.len() < 2 {
@@ -288,7 +290,7 @@ pub fn rainflow_count(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
     }
 
     let mut cycles = Vec::new();
-    let mut stack: Vec<f64> = Vec::new();
+    let mut stack: Vec<f64> = Vec::with_capacity(peaks.len());
 
     for &peak in peaks {
         stack.push(peak);
@@ -298,22 +300,21 @@ pub fn rainflow_count(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
             let range_prev = (stack[n - 2] - stack[n - 3]).abs();
 
             if range_last >= range_prev {
-                // The middle range is a full cycle
                 let s_max = stack[n - 2].max(stack[n - 3]);
                 let s_min = stack[n - 2].min(stack[n - 3]);
-                let range = s_max - s_min;
-                let mean = (s_max + s_min) / 2.0;
-                cycles.push((range, mean, 1.0));
-                // Remove the two points forming the cycle
-                stack.remove(n - 3);
-                stack.remove(n - 3); // n-2 shifted to n-3
+                cycles.push((s_max - s_min, (s_max + s_min) / 2.0, 1.0));
+                // Pop the last, remove the two cycle points, re-push last
+                let last = stack.pop().unwrap_or(0.0);
+                stack.pop();
+                stack.pop();
+                stack.push(last);
             } else {
                 break;
             }
         }
     }
 
-    // Remaining points form half-cycles
+    // Remaining points form half-cycles (residue)
     for window in stack.windows(2) {
         let range = (window[1] - window[0]).abs();
         let mean = (window[1] + window[0]) / 2.0;
@@ -321,6 +322,60 @@ pub fn rainflow_count(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
     }
 
     cycles
+}
+
+/// Rainflow counting for periodic signals.
+///
+/// Rearranges the signal to start at the overall maximum, wraps the
+/// residue, and re-counts to eliminate half-cycles. This is the standard
+/// approach per ASTM E1049-85 for repeating load histories.
+#[must_use]
+pub fn rainflow_count_periodic(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
+    if peaks.len() < 2 {
+        return Vec::new();
+    }
+
+    // Find the index of the overall maximum
+    let max_idx = peaks
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+
+    // Rearrange: start from max, wrap around
+    let mut rearranged = Vec::with_capacity(peaks.len() + 1);
+    rearranged.extend_from_slice(&peaks[max_idx..]);
+    rearranged.extend_from_slice(&peaks[..max_idx]);
+    rearranged.push(peaks[max_idx]); // close the loop
+
+    rainflow_count(&rearranged)
+}
+
+/// Extract turning points (peaks and valleys) from a raw load history.
+///
+/// Filters out intermediate points on monotonic segments, keeping only
+/// local extrema. The first and last points are always included.
+#[must_use]
+pub fn extract_turning_points(signal: &[f64]) -> Vec<f64> {
+    if signal.len() <= 2 {
+        return signal.to_vec();
+    }
+
+    let mut points = Vec::with_capacity(signal.len() / 2);
+    points.push(signal[0]);
+
+    for i in 1..signal.len() - 1 {
+        let prev = signal[i - 1];
+        let curr = signal[i];
+        let next = signal[i + 1];
+        if (curr - prev) * (next - curr) < 0.0 {
+            points.push(curr);
+        }
+    }
+
+    points.push(signal[signal.len() - 1]);
+    points
 }
 
 // --- SN curve interpolation ---
@@ -433,8 +488,12 @@ pub fn neuber_ramberg_osgood(
     };
 
     let x0 = kt * nominal_stress;
-    let sigma = hisab::num::newton_raphson(f, df, x0, tol, max_iter)
-        .map_err(|e| crate::DravyaError::ComputationError(format!("neuber_ramberg_osgood: {e}")))?;
+    let sigma = hisab::num::newton_raphson(f, df, x0, tol, max_iter).map_err(|_| {
+        crate::DravyaError::SolverNoConvergence {
+            method: "neuber_ramberg_osgood",
+            iterations: max_iter,
+        }
+    })?;
     let eps = ro_strain(sigma);
     Ok((sigma, eps))
 }

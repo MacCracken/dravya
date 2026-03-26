@@ -1,7 +1,7 @@
 # Dravya Roadmap
 
 ## Status
-**v1.0.0** — API stable. 12 modules, 243 tests, 26 benchmarks, zero panics.
+**v1.0.0** — API stable. 13 modules, 278 tests, 26 benchmarks, zero panics. Hardened via P(-1) with 9.6x principal stress speedup, Johnson-Cook, Neo-Hookean, Hashin, progressive failure, orthotropic 3D.
 
 ## Completed (P(-1) Hardening)
 - Material property verification against engineering handbooks

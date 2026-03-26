@@ -1,5 +1,6 @@
 //! Engineering material definitions with mechanical, thermal, and elastic properties.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use crate::elastic;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Material {
     /// Material name / identifier.
-    pub name: String,
+    pub name: Cow<'static, str>,
     /// Young's modulus (Pa).
     pub youngs_modulus: f64,
     /// Poisson's ratio (dimensionless, typically 0.2-0.5).
@@ -30,7 +31,7 @@ impl Material {
     ///
     /// Checks: E > 0, -1 < v < 0.5, sigma_y >= 0, UTS >= sigma_y, rho > 0.
     pub fn new(
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         youngs_modulus: f64,
         poisson_ratio: f64,
         yield_strength: f64,
@@ -123,7 +124,7 @@ impl Material {
     #[must_use]
     pub fn steel() -> Self {
         Self {
-            name: "Steel".into(),
+            name: Cow::Borrowed("Steel"),
             youngs_modulus: 200e9,
             poisson_ratio: 0.30,
             yield_strength: 250e6,
@@ -137,7 +138,7 @@ impl Material {
     #[must_use]
     pub fn aluminum() -> Self {
         Self {
-            name: "Aluminum 6061-T6".into(),
+            name: Cow::Borrowed("Aluminum 6061-T6"),
             youngs_modulus: 69e9,
             poisson_ratio: 0.33,
             yield_strength: 276e6,
@@ -151,7 +152,7 @@ impl Material {
     #[must_use]
     pub fn copper() -> Self {
         Self {
-            name: "Copper".into(),
+            name: Cow::Borrowed("Copper"),
             youngs_modulus: 117e9,
             poisson_ratio: 0.34,
             yield_strength: 62e6,
@@ -165,7 +166,7 @@ impl Material {
     #[must_use]
     pub fn titanium() -> Self {
         Self {
-            name: "Titanium Ti-6Al-4V".into(),
+            name: Cow::Borrowed("Titanium Ti-6Al-4V"),
             youngs_modulus: 114e9,
             poisson_ratio: 0.33,
             yield_strength: 880e6,
@@ -182,7 +183,7 @@ impl Material {
     #[must_use]
     pub fn glass() -> Self {
         Self {
-            name: "Glass".into(),
+            name: Cow::Borrowed("Glass"),
             youngs_modulus: 70e9,
             poisson_ratio: 0.22,
             yield_strength: 33e6,
@@ -199,7 +200,7 @@ impl Material {
     #[must_use]
     pub fn rubber() -> Self {
         Self {
-            name: "Rubber".into(),
+            name: Cow::Borrowed("Rubber"),
             youngs_modulus: 0.01e9,
             poisson_ratio: 0.49,
             yield_strength: 15e6,
@@ -217,7 +218,7 @@ impl Material {
     #[must_use]
     pub fn concrete() -> Self {
         Self {
-            name: "Concrete".into(),
+            name: Cow::Borrowed("Concrete"),
             youngs_modulus: 30e9,
             poisson_ratio: 0.20,
             yield_strength: 30e6,
@@ -234,7 +235,7 @@ impl Material {
     #[must_use]
     pub fn wood_oak() -> Self {
         Self {
-            name: "Oak".into(),
+            name: Cow::Borrowed("Oak"),
             youngs_modulus: 12e9,
             poisson_ratio: 0.35,
             yield_strength: 40e6,
@@ -252,7 +253,7 @@ impl Material {
     #[must_use]
     pub fn carbon_fiber() -> Self {
         Self {
-            name: "Carbon Fiber".into(),
+            name: Cow::Borrowed("Carbon Fiber"),
             youngs_modulus: 181e9,
             poisson_ratio: 0.27,
             yield_strength: 1800e6,
@@ -266,7 +267,7 @@ impl Material {
     #[must_use]
     pub fn stainless_steel_304() -> Self {
         Self {
-            name: "Stainless Steel 304".into(),
+            name: Cow::Borrowed("Stainless Steel 304"),
             youngs_modulus: 193e9,
             poisson_ratio: 0.29,
             yield_strength: 215e6,
@@ -284,7 +285,7 @@ impl Material {
     #[must_use]
     pub fn cast_iron() -> Self {
         Self {
-            name: "Gray Cast Iron".into(),
+            name: Cow::Borrowed("Gray Cast Iron"),
             youngs_modulus: 130e9,
             poisson_ratio: 0.26,
             yield_strength: 276e6,
@@ -298,7 +299,7 @@ impl Material {
     #[must_use]
     pub fn brass() -> Self {
         Self {
-            name: "Brass C36000".into(),
+            name: Cow::Borrowed("Brass C36000"),
             youngs_modulus: 100e9,
             poisson_ratio: 0.31,
             yield_strength: 140e6,
@@ -312,7 +313,7 @@ impl Material {
     #[must_use]
     pub fn hdpe() -> Self {
         Self {
-            name: "HDPE".into(),
+            name: Cow::Borrowed("HDPE"),
             youngs_modulus: 1.1e9,
             poisson_ratio: 0.42,
             yield_strength: 26e6,
@@ -336,7 +337,7 @@ impl Default for Material {
 /// interpolates for arbitrary temperature queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempDependentMaterial {
-    pub name: String,
+    pub name: Cow<'static, str>,
     /// (temperature_K, material_at_that_temperature) pairs,
     /// sorted by ascending temperature.
     points: Vec<(f64, Material)>,
@@ -346,7 +347,10 @@ impl TempDependentMaterial {
     /// Create from a set of (temperature, material) data points.
     ///
     /// Points will be sorted by temperature. At least one point is required.
-    pub fn new(name: impl Into<String>, mut points: Vec<(f64, Material)>) -> crate::Result<Self> {
+    pub fn new(
+        name: impl Into<Cow<'static, str>>,
+        mut points: Vec<(f64, Material)>,
+    ) -> crate::Result<Self> {
         if points.is_empty() {
             return Err(crate::DravyaError::InvalidMaterial(
                 "at least one temperature point required".into(),

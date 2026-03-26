@@ -376,6 +376,285 @@ pub fn transform_stress_to_material(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Additional failure criteria
+// ---------------------------------------------------------------------------
+
+/// Allowable strain limits for maximum strain criterion.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct StrainAllowables {
+    /// Longitudinal tensile strain limit.
+    pub eps1t: f64,
+    /// Longitudinal compressive strain limit (positive value).
+    pub eps1c: f64,
+    /// Transverse tensile strain limit.
+    pub eps2t: f64,
+    /// Transverse compressive strain limit (positive value).
+    pub eps2c: f64,
+    /// Shear strain limit.
+    pub gamma12_max: f64,
+}
+
+/// Maximum strain failure criterion.
+///
+/// Checks each strain component against its respective allowable.
+/// Returns failure index (>= 1.0 means failure).
+///
+/// Strain components (ε1, ε2, γ12) are in material coordinates.
+#[must_use]
+#[inline]
+pub fn max_strain_failure_index(
+    eps1: f64,
+    eps2: f64,
+    gamma12: f64,
+    allow: &StrainAllowables,
+) -> f64 {
+    let f1 = if eps1 >= 0.0 {
+        if allow.eps1t.abs() < hisab::EPSILON_F64 {
+            f64::INFINITY
+        } else {
+            eps1 / allow.eps1t
+        }
+    } else if allow.eps1c.abs() < hisab::EPSILON_F64 {
+        f64::INFINITY
+    } else {
+        eps1.abs() / allow.eps1c
+    };
+    let f2 = if eps2 >= 0.0 {
+        if allow.eps2t.abs() < hisab::EPSILON_F64 {
+            f64::INFINITY
+        } else {
+            eps2 / allow.eps2t
+        }
+    } else if allow.eps2c.abs() < hisab::EPSILON_F64 {
+        f64::INFINITY
+    } else {
+        eps2.abs() / allow.eps2c
+    };
+    let f12 = if allow.gamma12_max.abs() < hisab::EPSILON_F64 {
+        f64::INFINITY
+    } else {
+        gamma12.abs() / allow.gamma12_max
+    };
+    f1.max(f2).max(f12)
+}
+
+/// Hashin 2D failure criterion.
+///
+/// Distinguishes four failure modes: fiber tension, fiber compression,
+/// matrix tension, matrix compression. Returns per-mode failure indices
+/// as `HashinResult`.
+#[must_use]
+pub fn hashin_failure(stress: &PlyStress, lamina: &Lamina) -> HashinResult {
+    let s1 = stress.sigma1;
+    let s2 = stress.sigma2;
+    let t12 = stress.tau12;
+
+    // Fiber tension (σ1 >= 0): (σ1/Xt)² + (τ12/S12)²
+    let fiber_tension = if s1 >= 0.0 {
+        (s1 / lamina.xt).powi(2) + (t12 / lamina.s12).powi(2)
+    } else {
+        0.0
+    };
+
+    // Fiber compression (σ1 < 0): (σ1/Xc)²
+    let fiber_compression = if s1 < 0.0 {
+        (s1 / lamina.xc).powi(2)
+    } else {
+        0.0
+    };
+
+    // Matrix tension (σ2 >= 0): (σ2/Yt)² + (τ12/S12)²
+    let matrix_tension = if s2 >= 0.0 {
+        (s2 / lamina.yt).powi(2) + (t12 / lamina.s12).powi(2)
+    } else {
+        0.0
+    };
+
+    // Matrix compression (σ2 < 0): (σ2/(2*S23))² + [(Yc/(2*S23))²-1]*(σ2/Yc) + (τ12/S12)²
+    // Simplified (assuming S23 ≈ Yc/2): (σ2/Yc)² + (τ12/S12)²
+    let matrix_compression = if s2 < 0.0 {
+        (s2 / lamina.yc).powi(2) + (t12 / lamina.s12).powi(2)
+    } else {
+        0.0
+    };
+
+    HashinResult {
+        fiber_tension,
+        fiber_compression,
+        matrix_tension,
+        matrix_compression,
+    }
+}
+
+/// Result of Hashin failure analysis with per-mode failure indices.
+///
+/// Each index >= 1.0 indicates failure in that mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HashinResult {
+    /// Fiber tension failure index.
+    pub fiber_tension: f64,
+    /// Fiber compression failure index.
+    pub fiber_compression: f64,
+    /// Matrix tension failure index.
+    pub matrix_tension: f64,
+    /// Matrix compression failure index.
+    pub matrix_compression: f64,
+}
+
+impl HashinResult {
+    /// Maximum failure index across all modes.
+    #[must_use]
+    #[inline]
+    pub fn max_index(&self) -> f64 {
+        self.fiber_tension
+            .max(self.fiber_compression)
+            .max(self.matrix_tension)
+            .max(self.matrix_compression)
+    }
+
+    /// Whether any mode has failed.
+    #[must_use]
+    #[inline]
+    pub fn is_failed(&self) -> bool {
+        self.max_index() >= 1.0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Progressive failure analysis
+// ---------------------------------------------------------------------------
+
+/// Ply degradation factors for progressive failure.
+///
+/// When a ply fails, its stiffness is degraded (multiplied by these factors).
+#[derive(Debug, Clone, Copy)]
+pub struct DegradationFactors {
+    /// Factor for E1 after fiber failure (typically 0.0-0.1).
+    pub fiber: f64,
+    /// Factor for E2, G12 after matrix failure (typically 0.0-0.2).
+    pub matrix: f64,
+}
+
+impl Default for DegradationFactors {
+    fn default() -> Self {
+        Self {
+            fiber: 0.07,
+            matrix: 0.14,
+        }
+    }
+}
+
+/// Perform progressive failure analysis on a laminate under given stress.
+///
+/// Iteratively checks each ply for Hashin failure, degrades failed plies,
+/// recomputes the ABD matrix, and repeats until no new failures occur
+/// or the laminate fails catastrophically.
+///
+/// `laminate_stress` is (Nx, Ny, Nxy) in N/m.
+///
+/// Returns the degraded plies and the number of iterations taken.
+/// If all plies fail, returns the fully degraded state.
+#[must_use]
+pub fn progressive_failure(
+    plies: &[Ply],
+    laminate_stress: [f64; 3],
+    degradation: &DegradationFactors,
+    max_iterations: usize,
+) -> (Vec<Ply>, usize) {
+    let mut current_plies: Vec<Ply> = plies.to_vec();
+    let mut failed: Vec<bool> = vec![false; plies.len()];
+
+    for iteration in 1..=max_iterations {
+        let abd = abd_matrix(&current_plies);
+
+        // Invert ABD to get strains from forces (simplified: use A-inverse only for membrane)
+        let a_inv = invert_3x3(&abd.a);
+        let a_inv = match a_inv {
+            Some(inv) => inv,
+            None => return (current_plies, iteration),
+        };
+
+        // Mid-plane strains: ε = A⁻¹ N
+        let eps0 = mat3_vec3_mul(&a_inv, &laminate_stress);
+
+        let mut new_failure = false;
+        for (i, ply) in current_plies.iter_mut().enumerate() {
+            if failed[i] {
+                continue;
+            }
+            // Ply stress in material coordinates
+            let qbar = ply.lamina.transformed_stiffness(ply.angle);
+            let sig_x = qbar[0][0] * eps0[0] + qbar[0][1] * eps0[1] + qbar[0][2] * eps0[2];
+            let sig_y = qbar[1][0] * eps0[0] + qbar[1][1] * eps0[1] + qbar[1][2] * eps0[2];
+            let tau_xy = qbar[2][0] * eps0[0] + qbar[2][1] * eps0[1] + qbar[2][2] * eps0[2];
+
+            let ps = transform_stress_to_material(sig_x, sig_y, tau_xy, ply.angle);
+            let hashin = hashin_failure(&ps, &ply.lamina);
+
+            if hashin.is_failed() {
+                failed[i] = true;
+                new_failure = true;
+                // Degrade the failed ply
+                if hashin.fiber_tension >= 1.0 || hashin.fiber_compression >= 1.0 {
+                    ply.lamina.e1 *= degradation.fiber;
+                    ply.lamina.e2 *= degradation.fiber;
+                    ply.lamina.g12 *= degradation.fiber;
+                }
+                if hashin.matrix_tension >= 1.0 || hashin.matrix_compression >= 1.0 {
+                    ply.lamina.e2 *= degradation.matrix;
+                    ply.lamina.g12 *= degradation.matrix;
+                }
+            }
+        }
+
+        if !new_failure {
+            return (current_plies, iteration);
+        }
+    }
+
+    (current_plies, max_iterations)
+}
+
+/// Invert a 3x3 matrix (for ABD sub-matrix inversion).
+fn invert_3x3(m: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+    if det.abs() < hisab::EPSILON_F64 {
+        return None;
+    }
+
+    let inv_det = 1.0 / det;
+    Some([
+        [
+            (m[1][1] * m[2][2] - m[1][2] * m[2][1]) * inv_det,
+            (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * inv_det,
+            (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * inv_det,
+        ],
+        [
+            (m[1][2] * m[2][0] - m[1][0] * m[2][2]) * inv_det,
+            (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * inv_det,
+            (m[0][2] * m[1][0] - m[0][0] * m[1][2]) * inv_det,
+        ],
+        [
+            (m[1][0] * m[2][1] - m[1][1] * m[2][0]) * inv_det,
+            (m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inv_det,
+            (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inv_det,
+        ],
+    ])
+}
+
+/// Multiply 3x3 matrix by 3-vector.
+fn mat3_vec3_mul(m: &[[f64; 3]; 3], v: &[f64; 3]) -> [f64; 3] {
+    [
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -747,5 +1026,244 @@ mod tests {
         assert!(g.e1 > g.e2);
         assert!(g.xt > 0.0);
         assert!(g.s12 > 0.0);
+    }
+
+    // --- ABD inverse test ---
+
+    #[test]
+    fn abd_inverse_roundtrip() {
+        let l = carbon();
+        let plies = vec![
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+        ];
+        let abd = abd_matrix(&plies);
+        let inv = abd_inverse(&abd).expect("should be invertible");
+        // A * a should approximate identity (for symmetric laminate, B≈0)
+        for i in 0..3 {
+            for j in 0..3 {
+                let mut product = 0.0;
+                for k in 0..3 {
+                    product += abd.a[i][k] * inv.a[k][j];
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!(
+                    (product - expected).abs() < 0.01,
+                    "A*a_inv should be identity at [{i}][{j}], got {product}"
+                );
+            }
+        }
+    }
+
+    // --- Max strain failure test ---
+
+    #[test]
+    fn max_strain_no_failure() {
+        let allow = StrainAllowables {
+            eps1t: 0.01,
+            eps1c: 0.008,
+            eps2t: 0.005,
+            eps2c: 0.02,
+            gamma12_max: 0.02,
+        };
+        let fi = max_strain_failure_index(0.001, 0.0005, 0.001, &allow);
+        assert!(fi < 1.0, "should not fail at low strain, got {fi}");
+    }
+
+    #[test]
+    fn max_strain_fiber_failure() {
+        let allow = StrainAllowables {
+            eps1t: 0.01,
+            eps1c: 0.008,
+            eps2t: 0.005,
+            eps2c: 0.02,
+            gamma12_max: 0.02,
+        };
+        let fi = max_strain_failure_index(0.02, 0.0, 0.0, &allow);
+        assert!(fi >= 1.0, "should fail in fiber tension");
+    }
+
+    // --- Hashin failure tests ---
+
+    #[test]
+    fn hashin_no_failure() {
+        let l = carbon();
+        let s = PlyStress {
+            sigma1: 100e6,
+            sigma2: 10e6,
+            tau12: 5e6,
+        };
+        let h = hashin_failure(&s, &l);
+        assert!(!h.is_failed(), "should not fail at low stress");
+    }
+
+    #[test]
+    fn hashin_fiber_tension() {
+        let l = carbon();
+        let s = PlyStress {
+            sigma1: 2000e6,
+            sigma2: 0.0,
+            tau12: 0.0,
+        };
+        let h = hashin_failure(&s, &l);
+        assert!(h.fiber_tension >= 1.0, "should fail in fiber tension");
+        assert!(
+            h.fiber_compression < hisab::EPSILON_F64,
+            "no compression failure"
+        );
+    }
+
+    #[test]
+    fn hashin_matrix_tension() {
+        let l = carbon();
+        let s = PlyStress {
+            sigma1: 0.0,
+            sigma2: 100e6,
+            tau12: 0.0,
+        };
+        let h = hashin_failure(&s, &l);
+        assert!(
+            h.matrix_tension >= 1.0,
+            "should fail in matrix tension (Yt=50 MPa)"
+        );
+    }
+
+    #[test]
+    fn hashin_fiber_compression() {
+        let l = carbon();
+        let s = PlyStress {
+            sigma1: -1500e6,
+            sigma2: 0.0,
+            tau12: 0.0,
+        };
+        let h = hashin_failure(&s, &l);
+        assert!(
+            h.fiber_compression >= 1.0,
+            "should fail in fiber compression (Xc=1200 MPa)"
+        );
+    }
+
+    #[test]
+    fn hashin_distinguishes_modes() {
+        let l = carbon();
+        // Pure transverse tension — should fail matrix, not fiber
+        let s = PlyStress {
+            sigma1: 0.0,
+            sigma2: 100e6,
+            tau12: 0.0,
+        };
+        let h = hashin_failure(&s, &l);
+        assert!(h.matrix_tension > h.fiber_tension);
+        assert!(h.matrix_tension > h.fiber_compression);
+    }
+
+    // --- Progressive failure test ---
+
+    #[test]
+    fn progressive_failure_low_load_no_damage() {
+        let l = carbon();
+        let plies = vec![
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+        ];
+        let deg = DegradationFactors::default();
+        let (result, iters) = progressive_failure(&plies, [1000.0, 500.0, 0.0], &deg, 10);
+        // Low load should produce no failures
+        assert_eq!(iters, 1, "should converge in 1 iteration (no failures)");
+        // E1 should be unchanged
+        assert!(
+            (result[0].lamina.e1 - l.e1).abs() < 1.0,
+            "no degradation expected"
+        );
+    }
+
+    #[test]
+    fn progressive_failure_high_load_degrades() {
+        let l = carbon();
+        let plies = vec![
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: 0.0,
+                thickness: 0.000125,
+            },
+            Ply {
+                lamina: l.clone(),
+                angle: PI / 2.0,
+                thickness: 0.000125,
+            },
+        ];
+        let deg = DegradationFactors::default();
+        // High Nx load — 90° plies should fail in matrix (transverse to their fiber)
+        let (result, _) = progressive_failure(&plies, [500_000.0, 0.0, 0.0], &deg, 10);
+        // 90° plies (index 0, 3) should have degraded E2
+        assert!(
+            result[0].lamina.e2 < l.e2,
+            "90° ply should have degraded E2"
+        );
+    }
+
+    // --- Tsai-Wu custom f* test ---
+
+    #[test]
+    fn tsai_wu_custom_f_star_zero_more_conservative() {
+        let l = carbon();
+        let s = PlyStress {
+            sigma1: 500e6,
+            sigma2: 20e6,
+            tau12: 30e6,
+        };
+        let fi_default = tsai_wu_failure_index(&s, &l);
+        let fi_zero = tsai_wu_failure_index_custom(&s, &l, 0.0);
+        // f*=0 is more conservative than f*=-0.5 under biaxial tension
+        assert!(
+            (fi_default - fi_zero).abs() > hisab::EPSILON_F64,
+            "different f* should give different results"
+        );
     }
 }

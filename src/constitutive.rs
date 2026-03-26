@@ -255,8 +255,12 @@ pub fn ramberg_osgood_stress(
     };
 
     let x0 = youngs_modulus * strain;
-    hisab::num::newton_raphson(f, df, x0, tol, max_iter)
-        .map_err(|e| crate::DravyaError::ComputationError(format!("ramberg_osgood_stress: {e}")))
+    hisab::num::newton_raphson(f, df, x0, tol, max_iter).map_err(|_| {
+        crate::DravyaError::SolverNoConvergence {
+            method: "ramberg_osgood_stress",
+            iterations: max_iter,
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +458,271 @@ impl CombinedHardening {
                 ..*self
             };
             (stress, new_state)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Johnson-Cook rate-dependent plasticity
+// ---------------------------------------------------------------------------
+
+/// Johnson-Cook flow stress model for rate-dependent plasticity.
+///
+/// σ = (A + B * ε_p^n) * (1 + C * ln(ε̇*)) * (1 - T*^m)
+///
+/// where ε̇* = ε̇ / ε̇_0 (normalized strain rate),
+/// T* = (T - T_room) / (T_melt - T_room) (homologous temperature).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JohnsonCook {
+    /// Initial yield stress A (Pa).
+    pub a: f64,
+    /// Hardening coefficient B (Pa).
+    pub b: f64,
+    /// Strain hardening exponent n.
+    pub n: f64,
+    /// Strain rate sensitivity C.
+    pub c: f64,
+    /// Thermal softening exponent m.
+    pub m_thermal: f64,
+    /// Reference strain rate (1/s).
+    pub strain_rate_ref: f64,
+    /// Room temperature (K).
+    pub t_room: f64,
+    /// Melting temperature (K).
+    pub t_melt: f64,
+}
+
+impl JohnsonCook {
+    /// Compute flow stress for given plastic strain, strain rate, and temperature.
+    #[must_use]
+    pub fn flow_stress(&self, plastic_strain: f64, strain_rate: f64, temperature: f64) -> f64 {
+        // Strain hardening
+        let hardening = self.a + self.b * plastic_strain.max(0.0).powf(self.n);
+
+        // Strain rate effect
+        let rate_ratio = if self.strain_rate_ref.abs() < hisab::EPSILON_F64 {
+            1.0
+        } else {
+            (strain_rate / self.strain_rate_ref).max(1.0)
+        };
+        let rate_factor = 1.0 + self.c * rate_ratio.ln();
+
+        // Thermal softening
+        let t_star = if (self.t_melt - self.t_room).abs() < hisab::EPSILON_F64 {
+            0.0
+        } else {
+            ((temperature - self.t_room) / (self.t_melt - self.t_room)).clamp(0.0, 1.0)
+        };
+        let thermal_factor = 1.0 - t_star.powf(self.m_thermal);
+
+        hardening * rate_factor * thermal_factor
+    }
+
+    /// Typical parameters for OFHC copper.
+    #[must_use]
+    pub fn copper() -> Self {
+        Self {
+            a: 90e6,
+            b: 292e6,
+            n: 0.31,
+            c: 0.025,
+            m_thermal: 1.09,
+            strain_rate_ref: 1.0,
+            t_room: 293.0,
+            t_melt: 1356.0,
+        }
+    }
+
+    /// Typical parameters for 4340 steel.
+    #[must_use]
+    pub fn steel_4340() -> Self {
+        Self {
+            a: 792e6,
+            b: 510e6,
+            n: 0.26,
+            c: 0.014,
+            m_thermal: 1.03,
+            strain_rate_ref: 1.0,
+            t_room: 293.0,
+            t_melt: 1793.0,
+        }
+    }
+
+    /// Typical parameters for Ti-6Al-4V.
+    #[must_use]
+    pub fn titanium_ti6al4v() -> Self {
+        Self {
+            a: 1098e6,
+            b: 1092e6,
+            n: 0.93,
+            c: 0.014,
+            m_thermal: 1.1,
+            strain_rate_ref: 1.0,
+            t_room: 293.0,
+            t_melt: 1878.0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Neo-Hookean hyperelasticity
+// ---------------------------------------------------------------------------
+
+/// Neo-Hookean hyperelastic model.
+///
+/// Strain energy: W = C1 * (I1_bar - 3) + 1/D1 * (J - 1)^2
+///
+/// where C1 = mu/2, D1 = 2/kappa (mu = shear modulus, kappa = bulk modulus),
+/// I1_bar = J^(-2/3) * I1 (isochoric first invariant),
+/// J = det(F) (volume ratio).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NeoHookean {
+    /// Material parameter C1 = mu/2 (Pa).
+    pub c1: f64,
+    /// Material parameter D1 = 2/kappa (1/Pa). 0 = incompressible.
+    pub d1: f64,
+}
+
+impl NeoHookean {
+    /// Create from shear modulus and bulk modulus.
+    #[must_use]
+    pub fn from_moduli(shear_modulus: f64, bulk_modulus: f64) -> Self {
+        Self {
+            c1: shear_modulus / 2.0,
+            d1: if bulk_modulus.abs() < hisab::EPSILON_F64 {
+                0.0
+            } else {
+                2.0 / bulk_modulus
+            },
+        }
+    }
+
+    /// Create from Young's modulus and Poisson's ratio.
+    #[must_use]
+    pub fn from_elastic(youngs_modulus: f64, poisson_ratio: f64) -> Self {
+        let g = crate::elastic::shear_modulus(youngs_modulus, poisson_ratio);
+        let k = crate::elastic::bulk_modulus(youngs_modulus, poisson_ratio);
+        Self::from_moduli(g, k)
+    }
+
+    /// Strain energy density for a given deformation state.
+    ///
+    /// `i1` = first invariant of left Cauchy-Green tensor (tr(B)),
+    /// `j` = determinant of deformation gradient (volume ratio).
+    #[must_use]
+    #[inline]
+    pub fn strain_energy(&self, i1: f64, j: f64) -> f64 {
+        let i1_bar = j.powf(-2.0 / 3.0) * i1;
+        let volumetric = if self.d1.abs() < hisab::EPSILON_F64 {
+            0.0
+        } else {
+            (j - 1.0).powi(2) / self.d1
+        };
+        self.c1 * (i1_bar - 3.0) + volumetric
+    }
+
+    /// Cauchy stress for uniaxial stretch ratio λ (incompressible).
+    ///
+    /// σ = 2 * C1 * (λ^2 - 1/λ)
+    #[must_use]
+    #[inline]
+    pub fn uniaxial_stress(&self, stretch: f64) -> f64 {
+        if stretch.abs() < hisab::EPSILON_F64 {
+            return 0.0;
+        }
+        2.0 * self.c1 * (stretch * stretch - 1.0 / stretch)
+    }
+
+    /// Tangent modulus for uniaxial stretch (incompressible).
+    ///
+    /// dσ/dλ = 2 * C1 * (2λ + 1/λ^2)
+    #[must_use]
+    #[inline]
+    pub fn uniaxial_tangent(&self, stretch: f64) -> f64 {
+        if stretch.abs() < hisab::EPSILON_F64 {
+            return 0.0;
+        }
+        2.0 * self.c1 * (2.0 * stretch + 1.0 / (stretch * stretch))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Orthotropic 3D stiffness
+// ---------------------------------------------------------------------------
+
+/// 3D orthotropic elastic material properties.
+///
+/// 9 independent constants: E1, E2, E3, G12, G23, G13, v12, v23, v13.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Orthotropic3D {
+    pub e1: f64,
+    pub e2: f64,
+    pub e3: f64,
+    pub g12: f64,
+    pub g23: f64,
+    pub g13: f64,
+    pub nu12: f64,
+    pub nu23: f64,
+    pub nu13: f64,
+}
+
+impl Orthotropic3D {
+    /// Compute the 6x6 stiffness matrix in Voigt notation.
+    ///
+    /// Uses reciprocity: v_ij / E_i = v_ji / E_j.
+    #[must_use]
+    pub fn stiffness_matrix(&self) -> [[f64; 6]; 6] {
+        let nu21 = self.nu12 * self.e2 / self.e1;
+        let nu31 = self.nu13 * self.e3 / self.e1;
+        let nu32 = self.nu23 * self.e3 / self.e2;
+
+        let delta = 1.0
+            - self.nu12 * nu21
+            - self.nu23 * nu32
+            - self.nu13 * nu31
+            - 2.0 * self.nu12 * nu32 * self.nu13;
+
+        if delta.abs() < hisab::EPSILON_F64 {
+            return [[0.0; 6]; 6];
+        }
+
+        let c11 = self.e1 * (1.0 - self.nu23 * nu32) / delta;
+        let c22 = self.e2 * (1.0 - self.nu13 * nu31) / delta;
+        let c33 = self.e3 * (1.0 - self.nu12 * nu21) / delta;
+        let c12 = self.e1 * (nu21 + nu31 * self.nu23) / delta;
+        let c13 = self.e1 * (nu31 + nu21 * nu32) / delta;
+        let c23 = self.e2 * (nu32 + self.nu12 * nu31) / delta;
+
+        let mut c = [[0.0; 6]; 6];
+        c[0][0] = c11;
+        c[1][1] = c22;
+        c[2][2] = c33;
+        c[0][1] = c12;
+        c[1][0] = c12;
+        c[0][2] = c13;
+        c[2][0] = c13;
+        c[1][2] = c23;
+        c[2][1] = c23;
+        c[3][3] = self.g12;
+        c[4][4] = self.g23;
+        c[5][5] = self.g13;
+        c
+    }
+
+    /// Create from isotropic properties (all directions equal).
+    #[must_use]
+    pub fn from_isotropic(youngs_modulus: f64, poisson_ratio: f64) -> Self {
+        let g = crate::elastic::shear_modulus(youngs_modulus, poisson_ratio);
+        Self {
+            e1: youngs_modulus,
+            e2: youngs_modulus,
+            e3: youngs_modulus,
+            g12: g,
+            g23: g,
+            g13: g,
+            nu12: poisson_ratio,
+            nu23: poisson_ratio,
+            nu13: poisson_ratio,
         }
     }
 }
@@ -917,5 +1186,144 @@ mod tests {
             (s_kin - s_comb).abs() < 1.0,
             "combined with H_iso=0 should match pure kinematic"
         );
+    }
+
+    // --- Johnson-Cook tests ---
+
+    #[test]
+    fn jc_quasi_static_room_temp() {
+        let jc = JohnsonCook::steel_4340();
+        let sigma = jc.flow_stress(0.1, 1.0, 293.0);
+        // At room temp, quasi-static: σ = A + B*0.1^n = 792e6 + 510e6*0.1^0.26
+        assert!(sigma > jc.a, "should exceed initial yield");
+        assert!(sigma < 2.0 * jc.a, "should be reasonable");
+    }
+
+    #[test]
+    fn jc_rate_increases_stress() {
+        let jc = JohnsonCook::copper();
+        let s_low = jc.flow_stress(0.1, 1.0, 293.0);
+        let s_high = jc.flow_stress(0.1, 1000.0, 293.0);
+        assert!(s_high > s_low, "higher strain rate should increase stress");
+    }
+
+    #[test]
+    fn jc_temperature_decreases_stress() {
+        let jc = JohnsonCook::copper();
+        let s_cold = jc.flow_stress(0.1, 1.0, 293.0);
+        let s_hot = jc.flow_stress(0.1, 1.0, 800.0);
+        assert!(s_hot < s_cold, "higher temperature should decrease stress");
+    }
+
+    #[test]
+    fn jc_at_melt_zero_stress() {
+        let jc = JohnsonCook::copper();
+        let sigma = jc.flow_stress(0.1, 1.0, jc.t_melt);
+        assert!(sigma.abs() < 1.0, "at melting point, stress should be ~0");
+    }
+
+    #[test]
+    fn jc_zero_plastic_strain() {
+        let jc = JohnsonCook::steel_4340();
+        let sigma = jc.flow_stress(0.0, 1.0, 293.0);
+        assert!(
+            (sigma - jc.a).abs() < 1.0,
+            "at zero plastic strain, stress should be A"
+        );
+    }
+
+    // --- Neo-Hookean tests ---
+
+    #[test]
+    fn neo_hookean_from_moduli() {
+        let nh = NeoHookean::from_moduli(76.9e9, 166.7e9);
+        assert!((nh.c1 - 38.45e9).abs() < 0.1e9);
+    }
+
+    #[test]
+    fn neo_hookean_zero_stretch_zero_stress() {
+        let nh = NeoHookean::from_elastic(0.01e9, 0.49);
+        let sigma = nh.uniaxial_stress(1.0); // λ = 1 means no deformation
+        assert!(sigma.abs() < 1.0, "no deformation = no stress");
+    }
+
+    #[test]
+    fn neo_hookean_tension() {
+        let nh = NeoHookean::from_elastic(0.01e9, 0.49); // rubber-like
+        let sigma = nh.uniaxial_stress(1.5); // 50% stretch
+        assert!(sigma > 0.0, "tension should give positive stress");
+    }
+
+    #[test]
+    fn neo_hookean_compression() {
+        let nh = NeoHookean::from_elastic(0.01e9, 0.49);
+        let sigma = nh.uniaxial_stress(0.8); // 20% compression
+        assert!(sigma < 0.0, "compression should give negative stress");
+    }
+
+    #[test]
+    fn neo_hookean_energy_zero_at_reference() {
+        let nh = NeoHookean::from_elastic(0.01e9, 0.49);
+        let w = nh.strain_energy(3.0, 1.0); // I1=3, J=1 = reference state
+        assert!(w.abs() < 1.0, "energy at reference should be ~0");
+    }
+
+    #[test]
+    fn neo_hookean_tangent_positive() {
+        let nh = NeoHookean::from_elastic(0.01e9, 0.49);
+        let t = nh.uniaxial_tangent(1.0);
+        assert!(t > 0.0, "tangent at reference should be positive");
+    }
+
+    // --- Orthotropic 3D tests ---
+
+    #[test]
+    fn orthotropic_isotropic_matches_standard() {
+        let ort = Orthotropic3D::from_isotropic(200e9, 0.30);
+        let c_ort = ort.stiffness_matrix();
+        let c_iso = stiffness_matrix(200e9, 0.30);
+        for i in 0..6 {
+            for j in 0..6 {
+                assert!(
+                    (c_ort[i][j] - c_iso[i][j]).abs() < 1e3,
+                    "orthotropic-as-isotropic should match isotropic at [{i}][{j}]: {} vs {}",
+                    c_ort[i][j],
+                    c_iso[i][j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn orthotropic_symmetric() {
+        let ort = Orthotropic3D {
+            e1: 138e9,
+            e2: 11e9,
+            e3: 11e9,
+            g12: 5.5e9,
+            g23: 3.9e9,
+            g13: 5.5e9,
+            nu12: 0.28,
+            nu23: 0.40,
+            nu13: 0.28,
+        };
+        let c = ort.stiffness_matrix();
+        for (i, row) in c.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
+                assert!(
+                    (val - c[j][i]).abs() < 1.0,
+                    "should be symmetric at [{i}][{j}]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn orthotropic_diagonal_positive() {
+        let ort = Orthotropic3D::from_isotropic(200e9, 0.30);
+        let c = ort.stiffness_matrix();
+        for (i, row) in c.iter().enumerate() {
+            assert!(row[i] > 0.0, "C[{i}][{i}] should be positive");
+        }
     }
 }

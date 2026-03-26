@@ -22,7 +22,7 @@ pub fn to_thermal_material(
     specific_heat: f64,
 ) -> ushma::material::ThermalMaterial {
     ushma::material::ThermalMaterial {
-        name: material.name.clone().into(),
+        name: material.name.clone(),
         conductivity,
         specific_heat,
         density: material.density,
