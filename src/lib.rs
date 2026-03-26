@@ -7,9 +7,11 @@
 //! beam mechanics, and fatigue life prediction. Built on [`hisab`] for math.
 
 pub mod beam;
+pub mod constitutive;
 pub mod elastic;
 pub mod error;
 pub mod fatigue;
+pub mod fracture;
 pub mod material;
 pub mod strain;
 pub mod stress;
@@ -43,3 +45,9 @@ pub use fatigue::{basquin_cycles, endurance_limit_estimate, is_fatigue_failure, 
 
 // Strain
 pub use strain::{engineering_strain, true_strain};
+
+// Constitutive
+pub use constitutive::{compliance_matrix, stiffness_matrix};
+
+// Fracture
+pub use fracture::{fracture_check, ki_center_crack_infinite, ki_edge_crack, paris_law_rate};

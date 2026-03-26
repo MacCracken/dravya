@@ -111,6 +111,73 @@ fn bench_effective_strain(c: &mut Criterion) {
     });
 }
 
+fn bench_stress_from_strain(c: &mut Criterion) {
+    let steel = dravya::Material::steel();
+    let eps = dravya::StrainTensor::new(0.001, -0.0003, -0.0003, 0.0005, 0.0, 0.0);
+    c.bench_function("constitutive/stress_from_strain", |b| {
+        b.iter(|| dravya::constitutive::stress_from_strain(black_box(&steel), black_box(&eps)));
+    });
+}
+
+fn bench_stiffness_matrix(c: &mut Criterion) {
+    c.bench_function("constitutive/stiffness_matrix", |b| {
+        b.iter(|| dravya::constitutive::stiffness_matrix(black_box(200e9), black_box(0.30)));
+    });
+}
+
+fn bench_epp(c: &mut Criterion) {
+    c.bench_function("constitutive/elastic_perfectly_plastic", |b| {
+        b.iter(|| {
+            dravya::constitutive::elastic_perfectly_plastic(
+                black_box(200e9),
+                black_box(250e6),
+                black_box(0.005),
+            )
+        });
+    });
+}
+
+fn bench_bilinear(c: &mut Criterion) {
+    c.bench_function("constitutive/bilinear_hardening", |b| {
+        b.iter(|| {
+            dravya::constitutive::bilinear_hardening(
+                black_box(200e9),
+                black_box(250e6),
+                black_box(20e9),
+                black_box(0.005),
+            )
+        });
+    });
+}
+
+fn bench_ramberg_osgood(c: &mut Criterion) {
+    c.bench_function("constitutive/ramberg_osgood_strain", |b| {
+        b.iter(|| {
+            dravya::constitutive::ramberg_osgood_strain(
+                black_box(200e9),
+                black_box(1000e6),
+                black_box(10.0),
+                black_box(300e6),
+            )
+        });
+    });
+}
+
+fn bench_ramberg_osgood_inverse(c: &mut Criterion) {
+    c.bench_function("constitutive/ramberg_osgood_stress", |b| {
+        b.iter(|| {
+            dravya::constitutive::ramberg_osgood_stress(
+                black_box(200e9),
+                black_box(1000e6),
+                black_box(10.0),
+                black_box(0.003),
+                1e-6,
+                50,
+            )
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_von_mises,
@@ -126,6 +193,12 @@ criterion_group!(
     bench_basquin,
     bench_miners_rule,
     bench_goodman,
-    bench_effective_strain
+    bench_effective_strain,
+    bench_stress_from_strain,
+    bench_stiffness_matrix,
+    bench_epp,
+    bench_bilinear,
+    bench_ramberg_osgood,
+    bench_ramberg_osgood_inverse
 );
 criterion_main!(benches);

@@ -11,7 +11,10 @@
 - **yield_criteria** — Tresca safety factor, Drucker-Prager yield check with Mohr-Coulomb parameter conversion (for concrete, rock, soil)
 - **fatigue** — reversal-based Basquin form (`basquin_cycles_reversals`), Goodman/Gerber/Soderberg mean-stress corrections, stress ratio and amplitude/mean decomposition helpers; endurance limit 700 MPa cap
 - **error** — `DivisionByZero` and `InvalidParameter` variants; `Clone` derive
-- **benchmarks** — 9 new benchmarks: max_shear, j2, deviatoric, euler_buckling, safety_factor, basquin_cycles, miners_rule_100, goodman_correction, effective_strain
+- **constitutive** — new module: isotropic stiffness matrix C and compliance matrix S (6x6 Voigt), `stress_from_strain` / `strain_from_stress` (generalized 3D Hooke's law), elastic-perfectly-plastic uniaxial model, bilinear hardening with tangent modulus, Ramberg-Osgood nonlinear stress-strain (forward + Newton-Raphson inverse)
+- **fracture** — new module: Mode I stress intensity factors (center crack infinite/finite, edge crack, penny-shaped, crack at hole/Bowie), fracture toughness check, critical crack length, fracture stress, KIc from energy release rate, Paris law crack growth rate and life prediction
+- **fatigue** — Coffin-Manson low-cycle fatigue (strain-life equation, transition life), Marin endurance limit modification factors (surface finish, size, reliability, corrected endurance)
+- **benchmarks** — 12 new benchmarks: max_shear, j2, deviatoric, euler_buckling, safety_factor, basquin_cycles, miners_rule_100, goodman_correction, effective_strain, stress_from_strain, stiffness_matrix, elastic_perfectly_plastic
 
 ### Changed
 - **stress** — principal stress solver replaced with hisab's Jacobi eigenvalue decomposition (`eigen_symmetric`), improving numerical accuracy; von Mises refactored through J2 invariant
