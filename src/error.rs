@@ -1,3 +1,5 @@
+//! Error types for dravya operations.
+
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]

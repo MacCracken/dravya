@@ -1,3 +1,5 @@
+//! Beam mechanics: deflection, bending/shear/torsion stress, buckling, and cross-section properties.
+
 use std::f64::consts::PI;
 
 // --- Deflection formulas ---

@@ -1,3 +1,5 @@
+//! Fatigue analysis: Basquin, Coffin-Manson, Miner's rule, mean-stress corrections, and Marin factors.
+
 /// Basquin's law: cycles to failure (high-cycle fatigue).
 ///
 /// N = (σ_a / A)^(1/b)

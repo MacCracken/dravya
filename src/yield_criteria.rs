@@ -1,3 +1,5 @@
+//! Yield criteria: von Mises, Tresca, Drucker-Prager, and safety factors.
+
 use crate::stress::StressTensor;
 
 /// Check if stress exceeds yield via von Mises criterion.

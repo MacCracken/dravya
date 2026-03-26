@@ -4,7 +4,8 @@
 //! for the AGNOS ecosystem.
 //!
 //! Provides material properties, stress/strain tensors, elastic analysis, yield criteria,
-//! beam mechanics, and fatigue life prediction. Built on [`hisab`] for math.
+//! beam mechanics, fatigue life prediction, constitutive models, and fracture mechanics.
+//! Built on [`hisab`] for math.
 
 pub mod beam;
 pub mod constitutive;
@@ -20,6 +21,7 @@ pub mod yield_criteria;
 #[cfg(feature = "logging")]
 pub mod logging;
 
+// Core types
 pub use error::{DravyaError, Result};
 pub use material::Material;
 pub use strain::StrainTensor;
@@ -27,27 +29,49 @@ pub use stress::StressTensor;
 
 // Elastic
 pub use elastic::{
-    bulk_modulus, hookes_law, lame_lambda, plane_strain_modulus, plane_stress_modulus,
-    shear_modulus, strain_from_stress, youngs_from_bulk_shear, youngs_from_shear,
+    bulk_modulus, hookes_law, lame_lambda, p_wave_modulus, plane_strain_modulus,
+    plane_stress_modulus, poisson_from_bulk_shear, poisson_from_youngs_shear, shear_modulus,
+    strain_from_stress, try_bulk_modulus, try_shear_modulus, try_strain_from_stress,
+    youngs_from_bulk_shear, youngs_from_shear,
 };
 
 // Beam
 pub use beam::{
-    cantilever_deflection, cantilever_deflection_udl, euler_buckling_load,
-    simply_supported_deflection, simply_supported_deflection_udl,
+    angle_of_twist, bending_stress, cantilever_deflection, cantilever_deflection_udl,
+    euler_buckling_load, fixed_fixed_deflection, moment_of_inertia_circle,
+    moment_of_inertia_hollow_circle, moment_of_inertia_hollow_rect, moment_of_inertia_rect,
+    polar_moment_circle, polar_moment_hollow_circle, section_modulus_circle, section_modulus_rect,
+    shear_stress_beam, simply_supported_deflection, simply_supported_deflection_udl,
+    torsional_stress,
 };
 
 // Yield criteria
-pub use yield_criteria::{safety_factor, tresca_check, von_mises_check};
+pub use yield_criteria::{
+    drucker_prager_check, drucker_prager_from_mohr_coulomb, safety_factor, safety_factor_tresca,
+    tresca_check, von_mises_check,
+};
 
 // Fatigue
-pub use fatigue::{basquin_cycles, endurance_limit_estimate, is_fatigue_failure, miners_rule};
+pub use fatigue::{
+    basquin_cycles, basquin_cycles_reversals, coffin_manson_strain, coffin_manson_transition_life,
+    endurance_limit_estimate, gerber_correction, goodman_correction, is_fatigue_failure,
+    marin_corrected_endurance, marin_reliability_factor, marin_size_factor, marin_surface_factor,
+    miners_rule, soderberg_correction, stress_amplitude_mean, stress_ratio,
+};
 
 // Strain
-pub use strain::{engineering_strain, true_strain};
+pub use strain::{engineering_strain, true_strain, try_engineering_strain, try_true_strain};
 
 // Constitutive
-pub use constitutive::{compliance_matrix, stiffness_matrix};
+pub use constitutive::{
+    bilinear_hardening, compliance_matrix, elastic_perfectly_plastic,
+    elastic_perfectly_plastic_material, ramberg_osgood_strain, ramberg_osgood_stress,
+    stiffness_matrix, strain_from_stress_3d, stress_from_strain_3d,
+};
 
 // Fracture
-pub use fracture::{fracture_check, ki_center_crack_infinite, ki_edge_crack, paris_law_rate};
+pub use fracture::{
+    critical_crack_length, fracture_check, fracture_stress, ki_center_crack_finite,
+    ki_center_crack_infinite, ki_crack_at_hole, ki_edge_crack, ki_penny_crack,
+    kic_from_energy_release, paris_law_life, paris_law_rate,
+};

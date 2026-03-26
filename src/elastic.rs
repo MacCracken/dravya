@@ -1,3 +1,5 @@
+//! Elastic constants and relationships: Hooke's law, moduli conversions, plane stress/strain.
+
 /// Hooke's law: σ = E × ε
 #[must_use]
 #[inline]
@@ -108,6 +110,48 @@ pub fn p_wave_modulus(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
     plane_strain_modulus(youngs_modulus, poisson_ratio)
 }
 
+/// Poisson's ratio from Young's modulus and shear modulus: v = E/(2G) - 1
+#[must_use]
+#[inline]
+pub fn poisson_from_youngs_shear(youngs_modulus: f64, shear_mod: f64) -> f64 {
+    if shear_mod.abs() < hisab::EPSILON_F64 {
+        return 0.0;
+    }
+    youngs_modulus / (2.0 * shear_mod) - 1.0
+}
+
+// --- Checked (Result-returning) variants ---
+
+/// Checked bulk modulus. Returns `Err` for incompressible (v=0.5) or degenerate inputs.
+pub fn try_bulk_modulus(youngs_modulus: f64, poisson_ratio: f64) -> crate::Result<f64> {
+    let denom = 3.0 * (1.0 - 2.0 * poisson_ratio);
+    if denom.abs() < hisab::EPSILON_F64 {
+        return Err(crate::DravyaError::DivisionByZero(
+            "bulk_modulus: v=0.5 (incompressible)",
+        ));
+    }
+    Ok(youngs_modulus / denom)
+}
+
+/// Checked shear modulus. Returns `Err` for v=-1.0 or degenerate inputs.
+pub fn try_shear_modulus(youngs_modulus: f64, poisson_ratio: f64) -> crate::Result<f64> {
+    let denom = 2.0 * (1.0 + poisson_ratio);
+    if denom.abs() < hisab::EPSILON_F64 {
+        return Err(crate::DravyaError::DivisionByZero("shear_modulus: v=-1.0"));
+    }
+    Ok(youngs_modulus / denom)
+}
+
+/// Checked strain from stress. Returns `Err` for zero modulus.
+pub fn try_strain_from_stress(youngs_modulus: f64, stress: f64) -> crate::Result<f64> {
+    if youngs_modulus.abs() < hisab::EPSILON_F64 {
+        return Err(crate::DravyaError::DivisionByZero(
+            "strain_from_stress: zero modulus",
+        ));
+    }
+    Ok(stress / youngs_modulus)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +247,37 @@ mod tests {
             (es - 219.8e9).abs() < 1e9,
             "plane stress modulus ~219.8 GPa, got {es}"
         );
+    }
+
+    #[test]
+    fn poisson_from_youngs_shear_steel() {
+        let v = poisson_from_youngs_shear(200e9, 76.923e9);
+        assert!((v - 0.30).abs() < 0.01, "should recover v ~0.30, got {v}");
+    }
+
+    #[test]
+    fn try_bulk_modulus_incompressible() {
+        let result = try_bulk_modulus(200e9, 0.5);
+        assert!(result.is_err(), "v=0.5 should return Err");
+    }
+
+    #[test]
+    fn try_bulk_modulus_valid() {
+        let result = try_bulk_modulus(200e9, 0.30);
+        assert!(result.is_ok());
+        assert!((result.unwrap() - 166.7e9).abs() < 1e9);
+    }
+
+    #[test]
+    fn try_shear_modulus_degenerate() {
+        let result = try_shear_modulus(200e9, -1.0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_strain_from_stress_zero_modulus() {
+        let result = try_strain_from_stress(0.0, 100e6);
+        assert!(result.is_err());
     }
 
     #[test]

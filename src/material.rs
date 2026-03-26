@@ -1,3 +1,5 @@
+//! Engineering material definitions with mechanical, thermal, and elastic properties.
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,64 @@ pub struct Material {
 }
 
 impl Material {
+    /// Create a validated material.
+    ///
+    /// Checks: E > 0, -1 < v < 0.5, sigma_y >= 0, UTS >= sigma_y, rho > 0.
+    pub fn new(
+        name: impl Into<String>,
+        youngs_modulus: f64,
+        poisson_ratio: f64,
+        yield_strength: f64,
+        ultimate_tensile_strength: f64,
+        density: f64,
+        thermal_expansion: f64,
+    ) -> crate::Result<Self> {
+        if youngs_modulus <= 0.0 {
+            return Err(crate::DravyaError::InvalidParameter {
+                name: "youngs_modulus",
+                value: youngs_modulus,
+                reason: "must be positive",
+            });
+        }
+        if poisson_ratio <= -1.0 || poisson_ratio >= 0.5 {
+            return Err(crate::DravyaError::InvalidParameter {
+                name: "poisson_ratio",
+                value: poisson_ratio,
+                reason: "must be in (-1, 0.5)",
+            });
+        }
+        if yield_strength < 0.0 {
+            return Err(crate::DravyaError::InvalidParameter {
+                name: "yield_strength",
+                value: yield_strength,
+                reason: "must be non-negative",
+            });
+        }
+        if ultimate_tensile_strength < yield_strength {
+            return Err(crate::DravyaError::InvalidParameter {
+                name: "ultimate_tensile_strength",
+                value: ultimate_tensile_strength,
+                reason: "must be >= yield_strength",
+            });
+        }
+        if density <= 0.0 {
+            return Err(crate::DravyaError::InvalidParameter {
+                name: "density",
+                value: density,
+                reason: "must be positive",
+            });
+        }
+        Ok(Self {
+            name: name.into(),
+            youngs_modulus,
+            poisson_ratio,
+            yield_strength,
+            ultimate_tensile_strength,
+            density,
+            thermal_expansion,
+        })
+    }
+
     /// Shear modulus G = E / (2(1 + v)).
     #[must_use]
     #[inline]
@@ -350,5 +410,44 @@ mod tests {
             c.yield_strength >= 20e6,
             "concrete compressive strength should be >= 20 MPa"
         );
+    }
+
+    #[test]
+    fn new_valid() {
+        let m = Material::new("Test", 200e9, 0.30, 250e6, 400e6, 7850.0, 12e-6);
+        assert!(m.is_ok());
+    }
+
+    #[test]
+    fn new_negative_modulus() {
+        let m = Material::new("Bad", -1.0, 0.30, 250e6, 400e6, 7850.0, 12e-6);
+        assert!(m.is_err());
+    }
+
+    #[test]
+    fn new_invalid_poisson() {
+        let m = Material::new("Bad", 200e9, 0.5, 250e6, 400e6, 7850.0, 12e-6);
+        assert!(m.is_err());
+        let m = Material::new("Bad", 200e9, -1.0, 250e6, 400e6, 7850.0, 12e-6);
+        assert!(m.is_err());
+    }
+
+    #[test]
+    fn new_uts_less_than_yield() {
+        let m = Material::new("Bad", 200e9, 0.30, 400e6, 200e6, 7850.0, 12e-6);
+        assert!(m.is_err());
+    }
+
+    #[test]
+    fn new_zero_density() {
+        let m = Material::new("Bad", 200e9, 0.30, 250e6, 400e6, 0.0, 12e-6);
+        assert!(m.is_err());
+    }
+
+    #[test]
+    fn new_negative_yield_ok_zero() {
+        // Zero yield is valid (e.g., fluids)
+        let m = Material::new("Fluid", 200e9, 0.30, 0.0, 0.0, 1000.0, 0.0);
+        assert!(m.is_ok());
     }
 }

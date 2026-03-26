@@ -99,7 +99,7 @@ pub fn compliance_matrix(youngs_modulus: f64, poisson_ratio: f64) -> [[f64; 6]; 
 ///
 /// σ = C ε (generalized 3D Hooke's law).
 #[must_use]
-pub fn stress_from_strain(material: &Material, strain: &StrainTensor) -> StressTensor {
+pub fn stress_from_strain_3d(material: &Material, strain: &StrainTensor) -> StressTensor {
     let c = stiffness_matrix(material.youngs_modulus, material.poisson_ratio);
     let e = &strain.components;
     let mut s = [0.0; 6];
@@ -115,7 +115,7 @@ pub fn stress_from_strain(material: &Material, strain: &StrainTensor) -> StressT
 ///
 /// ε = S σ (inverse generalized Hooke's law).
 #[must_use]
-pub fn strain_from_stress(material: &Material, stress: &StressTensor) -> StrainTensor {
+pub fn strain_from_stress_3d(material: &Material, stress: &StressTensor) -> StrainTensor {
     let s_mat = compliance_matrix(material.youngs_modulus, material.poisson_ratio);
     let sig = &stress.components;
     let mut e = [0.0; 6];
@@ -325,7 +325,7 @@ mod tests {
         // Uniaxial strain εxx = 0.001, εyy = εzz = -v * εxx
         let v = steel.poisson_ratio;
         let eps = StrainTensor::new(0.001, -v * 0.001, -v * 0.001, 0.0, 0.0, 0.0);
-        let sigma = stress_from_strain(&steel, &eps);
+        let sigma = stress_from_strain_3d(&steel, &eps);
         // Should produce uniaxial stress σxx = E * εxx = 200 MPa
         assert!(
             (sigma.components[0] - 200e6).abs() < 1e3,
@@ -348,7 +348,7 @@ mod tests {
     fn uniaxial_strain_from_stress() {
         let steel = Material::steel();
         let sigma = StressTensor::uniaxial(200e6);
-        let eps = strain_from_stress(&steel, &sigma);
+        let eps = strain_from_stress_3d(&steel, &sigma);
         // εxx = σ/E = 0.001
         assert!(
             (eps.components[0] - 0.001).abs() < 1e-9,
@@ -369,8 +369,8 @@ mod tests {
     fn stress_strain_roundtrip() {
         let steel = Material::steel();
         let original = StressTensor::new(100e6, 50e6, 30e6, 20e6, 10e6, 5e6);
-        let eps = strain_from_stress(&steel, &original);
-        let recovered = stress_from_strain(&steel, &eps);
+        let eps = strain_from_stress_3d(&steel, &original);
+        let recovered = stress_from_strain_3d(&steel, &eps);
         for i in 0..6 {
             assert!(
                 (original.components[i] - recovered.components[i]).abs() < 1.0,
@@ -386,7 +386,7 @@ mod tests {
         let steel = Material::steel();
         // Pure volumetric strain
         let eps = StrainTensor::new(0.001, 0.001, 0.001, 0.0, 0.0, 0.0);
-        let sigma = stress_from_strain(&steel, &eps);
+        let sigma = stress_from_strain_3d(&steel, &eps);
         // All normal stresses should be equal (hydrostatic)
         assert!(
             (sigma.components[0] - sigma.components[1]).abs() < 1.0,
@@ -412,7 +412,7 @@ mod tests {
         let g = steel.shear_modulus();
         // Engineering shear strain γxy = 0.001
         let eps = StrainTensor::new(0.0, 0.0, 0.0, 0.001, 0.0, 0.0);
-        let sigma = stress_from_strain(&steel, &eps);
+        let sigma = stress_from_strain_3d(&steel, &eps);
         // τxy = G * γxy
         assert!(
             (sigma.components[3] - g * 0.001).abs() < 1.0,

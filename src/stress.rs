@@ -1,3 +1,5 @@
+//! Symmetric stress tensor in Voigt notation with invariants, yield measures, and arithmetic.
+
 use std::fmt;
 use std::ops::{Add, Mul, Sub};
 
@@ -44,6 +46,7 @@ impl StressTensor {
 
     /// Scale all components by a scalar.
     #[must_use]
+    #[inline]
     pub fn scale(self, factor: f64) -> Self {
         Self {
             components: [
@@ -66,6 +69,7 @@ impl StressTensor {
 
     /// Deviatoric stress tensor: s_ij = σ_ij - σ_m * δ_ij
     #[must_use]
+    #[inline]
     pub fn deviatoric(&self) -> Self {
         let h = self.hydrostatic();
         Self::new(
@@ -148,21 +152,34 @@ impl StressTensor {
     ///
     /// Computed from eigenvalues of the 3x3 symmetric stress matrix
     /// using hisab's Jacobi eigenvalue solver.
+    ///
+    /// Returns `Err` if the eigenvalue solver fails to converge.
+    pub fn try_principal_stresses(&self) -> crate::Result<[f64; 3]> {
+        let mat = self.as_matrix();
+        let decomp = hisab::num::eigen_symmetric(&mat, hisab::EPSILON_F64, 100).map_err(|e| {
+            crate::DravyaError::ComputationError(format!("eigenvalue solver failed: {e}"))
+        })?;
+        let ev = &decomp.eigenvalues_real;
+        let mut principals = [
+            ev.first().copied().unwrap_or(0.0),
+            ev.get(1).copied().unwrap_or(0.0),
+            ev.get(2).copied().unwrap_or(0.0),
+        ];
+        principals.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(principals)
+    }
+
+    /// Principal stresses (sorted descending: σ1 >= σ2 >= σ3).
+    ///
+    /// Convenience wrapper that logs a warning and falls back to hydrostatic
+    /// if the eigenvalue solver fails. Use [`try_principal_stresses`](Self::try_principal_stresses)
+    /// for explicit error handling.
     #[must_use]
     pub fn principal_stresses(&self) -> [f64; 3] {
-        let mat = self.as_matrix();
-        match hisab::num::eigen_symmetric(&mat, hisab::EPSILON_F64, 100) {
-            Ok(decomp) => {
-                let ev = &decomp.eigenvalues_real;
-                let mut principals = [
-                    ev.first().copied().unwrap_or(0.0),
-                    ev.get(1).copied().unwrap_or(0.0),
-                    ev.get(2).copied().unwrap_or(0.0),
-                ];
-                principals.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-                principals
-            }
-            Err(_) => {
+        match self.try_principal_stresses() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("principal_stresses fallback to hydrostatic: {e}");
                 let h = self.hydrostatic();
                 [h, h, h]
             }

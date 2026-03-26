@@ -115,7 +115,7 @@ fn bench_stress_from_strain(c: &mut Criterion) {
     let steel = dravya::Material::steel();
     let eps = dravya::StrainTensor::new(0.001, -0.0003, -0.0003, 0.0005, 0.0, 0.0);
     c.bench_function("constitutive/stress_from_strain", |b| {
-        b.iter(|| dravya::constitutive::stress_from_strain(black_box(&steel), black_box(&eps)));
+        b.iter(|| dravya::constitutive::stress_from_strain_3d(black_box(&steel), black_box(&eps)));
     });
 }
 
