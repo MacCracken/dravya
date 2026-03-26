@@ -14,6 +14,7 @@
 - **constitutive** — new module: isotropic stiffness matrix C and compliance matrix S (6x6 Voigt), `stress_from_strain` / `strain_from_stress` (generalized 3D Hooke's law), elastic-perfectly-plastic uniaxial model, bilinear hardening with tangent modulus, Ramberg-Osgood nonlinear stress-strain (forward + Newton-Raphson inverse)
 - **fracture** — new module: Mode I stress intensity factors (center crack infinite/finite, edge crack, penny-shaped, crack at hole/Bowie), fracture toughness check, critical crack length, fracture stress, KIc from energy release rate, Paris law crack growth rate and life prediction
 - **fatigue** — Coffin-Manson low-cycle fatigue (strain-life equation, transition life), Marin endurance limit modification factors (surface finish, size, reliability, corrected endurance)
+- **composite** — new module: `Lamina` type with orthotropic properties and presets (carbon/epoxy, glass/epoxy), reduced stiffness Q and transformed Q-bar matrices, Classical Laminate Theory ABD matrix, ply stress transformation, failure criteria (max stress, Tsai-Hill, Tsai-Wu)
 - **benchmarks** — 12 new benchmarks: max_shear, j2, deviatoric, euler_buckling, safety_factor, basquin_cycles, miners_rule_100, goodman_correction, effective_strain, stress_from_strain, stiffness_matrix, elastic_perfectly_plastic
 
 ### Changed

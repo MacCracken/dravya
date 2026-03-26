@@ -30,9 +30,9 @@
 - J-integral
 
 ### Composites
-- Classical laminate theory
-- Ply failure criteria (Tsai-Hill, Tsai-Wu)
-- Laminate stiffness matrices
+- ~~Classical laminate theory~~ done (ABD matrix from ply layup)
+- ~~Ply failure criteria (Tsai-Hill, Tsai-Wu)~~ done (+ max stress)
+- ~~Laminate stiffness matrices~~ done (Q, Q-bar, ABD)
 
 ### Thermal
 - ushma coupling for transient thermal analysis

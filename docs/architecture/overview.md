@@ -8,6 +8,7 @@ dravya
 ├── elastic.rs        — Hooke's law, bulk/shear modulus, Lame, reverse conversions, plane stress/strain
 ├── yield_criteria.rs — von Mises/Tresca yield, safety factors, Drucker-Prager
 ├── beam.rs           — Deflection (point/UDL/fixed), bending/shear/torsion stress, Euler buckling, section properties
+├── composite.rs      — Lamina stiffness (Q, Q-bar), CLT ABD matrix, Tsai-Hill/Tsai-Wu/max-stress failure
 ├── constitutive.rs   — Stiffness/compliance matrices, stress-strain conversion, EPP, bilinear, Ramberg-Osgood
 ├── fracture.rs       — Stress intensity factors, fracture toughness, Paris law crack growth
 ├── fatigue.rs        — Basquin, Miner's rule, endurance limit, Goodman/Gerber/Soderberg corrections

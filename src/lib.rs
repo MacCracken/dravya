@@ -8,6 +8,7 @@
 //! Built on [`hisab`] for math.
 
 pub mod beam;
+pub mod composite;
 pub mod constitutive;
 pub mod elastic;
 pub mod error;
@@ -67,6 +68,12 @@ pub use constitutive::{
     bilinear_hardening, compliance_matrix, elastic_perfectly_plastic,
     elastic_perfectly_plastic_material, ramberg_osgood_strain, ramberg_osgood_stress,
     stiffness_matrix, strain_from_stress_3d, stress_from_strain_3d,
+};
+
+// Composite
+pub use composite::{
+    AbdMatrix, Lamina, Ply, PlyStress, abd_matrix, max_stress_failure_index,
+    transform_stress_to_material, tsai_hill_failure_index, tsai_wu_failure_index,
 };
 
 // Fracture
