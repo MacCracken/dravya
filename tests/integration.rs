@@ -1,8 +1,7 @@
-use dravya::*;
 use dravya::material::Material;
 use dravya::stress::StressTensor;
-use dravya::strain;
 use dravya::yield_criteria;
+use dravya::*;
 
 #[test]
 fn steel_below_yield() {

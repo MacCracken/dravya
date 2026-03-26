@@ -4,13 +4,13 @@
 
 ## Features
 
-- **Materials** — 9 presets (steel, aluminum, copper, titanium, glass, rubber, concrete, oak, carbon fiber) with E, ν, σ_y, ρ, α
-- **Stress** — symmetric tensor, von Mises, Tresca max shear, principal stresses, hydrostatic
-- **Strain** — engineering strain, true strain, volumetric strain
-- **Elasticity** — Hooke's law, bulk/shear modulus, Lamé parameters
-- **Yield** — von Mises and Tresca yield checks, safety factor
-- **Beams** — cantilever/simply-supported deflection, bending stress, moment of inertia (rect, circle)
-- **Fatigue** — Basquin's law, Miner's rule, endurance limit estimation
+- **Materials** — 9 presets (steel, aluminum, copper, titanium, glass, rubber, concrete, oak, carbon fiber) with E, v, sigma_y, sigma_uts, rho, alpha; derived elastic properties and thermal strain
+- **Stress** — symmetric tensor (Voigt), von Mises, Tresca, principal stresses, invariants (I1/I2/I3/J2), deviatoric, octahedral shear, arithmetic ops
+- **Strain** — engineering/true strain, volumetric, deviatoric, effective (equivalent) strain, arithmetic ops
+- **Elasticity** — Hooke's law, bulk/shear modulus, Lame parameters, reverse conversions (G,v->E; K,G->E,v), plane stress/strain moduli, P-wave modulus
+- **Yield** — von Mises and Tresca yield checks and safety factors, Drucker-Prager (concrete/rock/soil)
+- **Beams** — deflection (point load, UDL, fixed-fixed), bending/shear/torsion stress, Euler buckling, moment of inertia (rect, circle, hollow), polar moment, section modulus
+- **Fatigue** — Basquin's law (cycle and reversal forms), Miner's rule, Goodman/Gerber/Soderberg mean-stress corrections, endurance limit estimation, stress ratio utilities
 
 ## Quick Start
 
