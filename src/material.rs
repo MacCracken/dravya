@@ -261,6 +261,66 @@ impl Material {
             thermal_expansion: -0.5e-6,
         }
     }
+
+    /// Stainless steel 304 (austenitic).
+    #[must_use]
+    pub fn stainless_steel_304() -> Self {
+        Self {
+            name: "Stainless Steel 304".into(),
+            youngs_modulus: 193e9,
+            poisson_ratio: 0.29,
+            yield_strength: 215e6,
+            ultimate_tensile_strength: 505e6,
+            density: 8000.0,
+            thermal_expansion: 17.3e-6,
+        }
+    }
+
+    /// Gray cast iron (ASTM Class 40).
+    ///
+    /// Note: cast iron is brittle in tension. `yield_strength` is the
+    /// 0.2% proof stress; tensile fracture occurs at ~293 MPa with
+    /// minimal plastic deformation.
+    #[must_use]
+    pub fn cast_iron() -> Self {
+        Self {
+            name: "Gray Cast Iron".into(),
+            youngs_modulus: 130e9,
+            poisson_ratio: 0.26,
+            yield_strength: 276e6,
+            ultimate_tensile_strength: 293e6,
+            density: 7200.0,
+            thermal_expansion: 10.8e-6,
+        }
+    }
+
+    /// Brass (C36000, free-cutting).
+    #[must_use]
+    pub fn brass() -> Self {
+        Self {
+            name: "Brass C36000".into(),
+            youngs_modulus: 100e9,
+            poisson_ratio: 0.31,
+            yield_strength: 140e6,
+            ultimate_tensile_strength: 340e6,
+            density: 8500.0,
+            thermal_expansion: 20.5e-6,
+        }
+    }
+
+    /// High-density polyethylene (HDPE).
+    #[must_use]
+    pub fn hdpe() -> Self {
+        Self {
+            name: "HDPE".into(),
+            youngs_modulus: 1.1e9,
+            poisson_ratio: 0.42,
+            yield_strength: 26e6,
+            ultimate_tensile_strength: 33e6,
+            density: 950.0,
+            thermal_expansion: 120e-6,
+        }
+    }
 }
 
 impl Default for Material {
@@ -412,6 +472,10 @@ mod tests {
             Material::concrete(),
             Material::wood_oak(),
             Material::carbon_fiber(),
+            Material::stainless_steel_304(),
+            Material::cast_iron(),
+            Material::brass(),
+            Material::hdpe(),
         ];
         for m in &mats {
             assert!(m.youngs_modulus > 0.0, "{} should have positive E", m.name);

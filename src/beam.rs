@@ -289,8 +289,12 @@ mod tests {
 
     #[test]
     fn moment_of_inertia_circle_10mm() {
-        let i = moment_of_inertia_circle(0.005);
-        assert!(i > 0.0 && i < 1e-6);
+        let i = moment_of_inertia_circle(0.005); // r=5mm
+        // I = π * 0.005^4 / 4 = 4.909e-10
+        assert!(
+            (i - 4.909e-10).abs() < 1e-12,
+            "I should be ~4.909e-10, got {i}"
+        );
     }
 
     #[test]
@@ -323,8 +327,13 @@ mod tests {
     #[test]
     fn bending_stress_basic() {
         let i = moment_of_inertia_rect(0.1, 0.01);
-        let sigma = bending_stress(100.0, 0.005, i);
-        assert!(sigma > 0.0);
+        let sigma = bending_stress(100.0, 0.005, i); // 100 N·m, 5mm from NA
+        // σ = My/I = 100 * 0.005 / 8.333e-9 = 60.0e6
+        assert!(
+            (sigma - 60.0e6).abs() < 1e3,
+            "bending stress should be ~60 MPa, got {}",
+            sigma / 1e6
+        );
     }
 
     #[test]

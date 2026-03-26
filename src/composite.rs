@@ -192,6 +192,44 @@ pub fn abd_matrix(plies: &[Ply]) -> AbdMatrix {
     AbdMatrix { a, b, d }
 }
 
+/// Invert the ABD matrix to get the abd compliance (lowercase).
+///
+/// Assembles the full 6x6 ABD, inverts via hisab, and splits back into
+/// 3x3 sub-matrices. Returns the inverse such that:
+/// ```text
+/// {ε⁰}   [a  b] {N}
+/// {κ}   = [b  d] {M}
+/// ```
+///
+/// Returns `None` if the matrix is singular.
+#[must_use]
+pub fn abd_inverse(abd: &AbdMatrix) -> Option<AbdMatrix> {
+    // Assemble 6x6
+    let mut full: Vec<Vec<f64>> = vec![vec![0.0; 6]; 6];
+    for i in 0..3 {
+        for j in 0..3 {
+            full[i][j] = abd.a[i][j];
+            full[i][j + 3] = abd.b[i][j];
+            full[i + 3][j] = abd.b[i][j];
+            full[i + 3][j + 3] = abd.d[i][j];
+        }
+    }
+
+    let inv = hisab::num::matrix_inverse(&full).ok()?;
+
+    let mut a = [[0.0; 3]; 3];
+    let mut b = [[0.0; 3]; 3];
+    let mut d = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            a[i][j] = inv[i][j];
+            b[i][j] = inv[i][j + 3];
+            d[i][j] = inv[i + 3][j + 3];
+        }
+    }
+    Some(AbdMatrix { a, b, d })
+}
+
 // ---------------------------------------------------------------------------
 // Ply failure criteria
 // ---------------------------------------------------------------------------
@@ -214,6 +252,14 @@ pub struct PlyStress {
 #[must_use]
 #[inline]
 pub fn max_stress_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
+    if lamina.xt.abs() < hisab::EPSILON_F64
+        || lamina.xc.abs() < hisab::EPSILON_F64
+        || lamina.yt.abs() < hisab::EPSILON_F64
+        || lamina.yc.abs() < hisab::EPSILON_F64
+        || lamina.s12.abs() < hisab::EPSILON_F64
+    {
+        return f64::INFINITY;
+    }
     let f1 = if stress.sigma1 >= 0.0 {
         stress.sigma1 / lamina.xt
     } else {
@@ -269,8 +315,20 @@ pub fn tsai_hill_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
 /// F = F1*σ1 + F2*σ2 + F11*σ1² + F22*σ2² + F66*τ12² + 2*F12*σ1*σ2
 ///
 /// Uses the default interaction term F12 = -0.5 * sqrt(F11 * F22).
+/// For custom interaction, use [`tsai_wu_failure_index_custom`].
 #[must_use]
 pub fn tsai_wu_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
+    tsai_wu_failure_index_custom(stress, lamina, -0.5)
+}
+
+/// Tsai-Wu failure criterion with custom interaction parameter f*.
+///
+/// F12 = f* * sqrt(F11 * F22). Standard values:
+/// - f* = -0.5 (default, most common)
+/// - f* = 0.0 (conservative, no interaction)
+/// - Must satisfy |f*| <= 1.0 for a closed failure envelope.
+#[must_use]
+pub fn tsai_wu_failure_index_custom(stress: &PlyStress, lamina: &Lamina, f_star: f64) -> f64 {
     if lamina.xt.abs() < hisab::EPSILON_F64
         || lamina.xc.abs() < hisab::EPSILON_F64
         || lamina.yt.abs() < hisab::EPSILON_F64
@@ -285,7 +343,7 @@ pub fn tsai_wu_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
     let f11 = 1.0 / (lamina.xt * lamina.xc);
     let f22 = 1.0 / (lamina.yt * lamina.yc);
     let f66 = 1.0 / (lamina.s12 * lamina.s12);
-    let f12 = -0.5 * (f11 * f22).sqrt();
+    let f12 = f_star * (f11 * f22).sqrt();
 
     let s1 = stress.sigma1;
     let s2 = stress.sigma2;

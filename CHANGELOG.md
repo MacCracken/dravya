@@ -2,6 +2,10 @@
 
 ## [1.0.0] - 2026-03-26
 
+### Performance
+- **stress** — principal stresses: 860 ns -> 97 ns (8.9x faster) via closed-form Lode angle solver replacing iterative Jacobi eigenvalue decomposition with heap allocations
+- **stress** — max_shear: 868 ns -> 107 ns (8.1x faster) — same improvement, propagated
+
 ### Added
 - **material** — `ultimate_tensile_strength` field on `Material`, convenience methods `shear_modulus()`, `bulk_modulus()`, `lame_lambda()`, `thermal_strain()`, `thermal_stress()`; `Default` and `Display` trait implementations
 - **stress** — deviatoric stress tensor, stress invariants I1/I2/I3, J2 deviatoric invariant, octahedral shear stress, hydrostatic/pure_shear constructors, `Add`/`Sub`/`Mul` arithmetic, `scale()`, `Default`/`Display`/`PartialEq` traits
@@ -14,7 +18,8 @@
 - **constitutive** — new module: isotropic stiffness matrix C and compliance matrix S (6x6 Voigt), `stress_from_strain` / `strain_from_stress` (generalized 3D Hooke's law), elastic-perfectly-plastic uniaxial model, bilinear hardening with tangent modulus, Ramberg-Osgood nonlinear stress-strain (forward + Newton-Raphson inverse)
 - **fracture** — new module: Mode I stress intensity factors (center crack infinite/finite, edge crack, penny-shaped, crack at hole/Bowie), fracture toughness check, critical crack length, fracture stress, KIc from energy release rate, Paris law crack growth rate and life prediction
 - **fatigue** — Coffin-Manson low-cycle fatigue (strain-life equation, transition life), Marin endurance limit modification factors (surface finish, size, reliability, corrected endurance)
-- **composite** — new module: `Lamina` type with orthotropic properties and presets (carbon/epoxy, glass/epoxy), reduced stiffness Q and transformed Q-bar matrices, Classical Laminate Theory ABD matrix, ply stress transformation, failure criteria (max stress, Tsai-Hill, Tsai-Wu)
+- **composite** — new module: `Lamina` type with orthotropic properties and presets (carbon/epoxy, glass/epoxy), reduced stiffness Q and transformed Q-bar matrices, Classical Laminate Theory ABD matrix and inverse, ply stress transformation, failure criteria (max stress, Tsai-Hill, Tsai-Wu with custom f* interaction parameter)
+- **material** — 4 new presets: stainless steel 304, gray cast iron, brass C36000, HDPE (13 total)
 - **benchmarks** — 12 new benchmarks: max_shear, j2, deviatoric, euler_buckling, safety_factor, basquin_cycles, miners_rule_100, goodman_correction, effective_strain, stress_from_strain, stiffness_matrix, elastic_perfectly_plastic
 
 ### Changed

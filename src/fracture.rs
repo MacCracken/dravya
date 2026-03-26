@@ -209,7 +209,11 @@ pub fn kii_center_crack(shear_stress: f64, half_crack_length: f64) -> f64 {
 
 /// Mode II SIF for a single edge crack under shear.
 ///
-/// KII = 1.12 * τ * sqrt(π * a)
+/// KII = F * τ * sqrt(π * a)
+///
+/// Uses F = 1.12 (same free-surface correction as Mode I).
+/// Note: Mode II corrections are highly geometry-dependent. For precision,
+/// use geometry-specific solutions from Tada/Paris/Irwin.
 #[must_use]
 #[inline]
 pub fn kii_edge_crack(shear_stress: f64, crack_length: f64) -> f64 {

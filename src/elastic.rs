@@ -13,6 +13,7 @@ pub fn hookes_law(youngs_modulus: f64, strain: f64) -> f64 {
 pub fn bulk_modulus(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
     let denom = 3.0 * (1.0 - 2.0 * poisson_ratio);
     if denom.abs() < hisab::EPSILON_F64 {
+        tracing::warn!("bulk_modulus: degenerate v={poisson_ratio}, returning 0.0");
         return 0.0;
     }
     youngs_modulus / denom
@@ -24,6 +25,7 @@ pub fn bulk_modulus(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
 pub fn shear_modulus(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
     let denom = 2.0 * (1.0 + poisson_ratio);
     if denom.abs() < hisab::EPSILON_F64 {
+        tracing::warn!("shear_modulus: degenerate v={poisson_ratio}, returning 0.0");
         return 0.0;
     }
     youngs_modulus / denom
@@ -35,6 +37,7 @@ pub fn shear_modulus(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
 pub fn lame_lambda(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
     let denom = (1.0 + poisson_ratio) * (1.0 - 2.0 * poisson_ratio);
     if denom.abs() < hisab::EPSILON_F64 {
+        tracing::warn!("lame_lambda: degenerate v={poisson_ratio}, returning 0.0");
         return 0.0;
     }
     youngs_modulus * poisson_ratio / denom
@@ -45,6 +48,7 @@ pub fn lame_lambda(youngs_modulus: f64, poisson_ratio: f64) -> f64 {
 #[inline]
 pub fn strain_from_stress(youngs_modulus: f64, stress: f64) -> f64 {
     if youngs_modulus.abs() < hisab::EPSILON_F64 {
+        tracing::warn!("strain_from_stress: zero modulus, returning 0.0");
         return 0.0;
     }
     stress / youngs_modulus

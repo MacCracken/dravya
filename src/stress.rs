@@ -136,54 +136,42 @@ impl StressTensor {
         (principals[0] - principals[2]) / 2.0
     }
 
-    /// Expand Voigt-notation components into a 3x3 symmetric matrix
-    /// in row-major format for hisab's linear algebra routines.
-    #[must_use]
-    fn as_matrix(&self) -> [Vec<f64>; 3] {
-        let [sxx, syy, szz, txy, tyz, txz] = self.components;
-        [
-            vec![sxx, txy, txz],
-            vec![txy, syy, tyz],
-            vec![txz, tyz, szz],
-        ]
-    }
-
     /// Principal stresses (sorted descending: σ1 >= σ2 >= σ3).
     ///
-    /// Computed from eigenvalues of the 3x3 symmetric stress matrix
-    /// using hisab's Jacobi eigenvalue solver.
-    ///
-    /// Returns `Err` if the eigenvalue solver fails to converge.
-    pub fn try_principal_stresses(&self) -> crate::Result<[f64; 3]> {
-        let mat = self.as_matrix();
-        let decomp = hisab::num::eigen_symmetric(&mat, hisab::EPSILON_F64, 100).map_err(|e| {
-            crate::DravyaError::ComputationError(format!("eigenvalue solver failed: {e}"))
-        })?;
-        let ev = &decomp.eigenvalues_real;
-        let mut principals = [
-            ev.first().copied().unwrap_or(0.0),
-            ev.get(1).copied().unwrap_or(0.0),
-            ev.get(2).copied().unwrap_or(0.0),
-        ];
-        principals.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-        Ok(principals)
-    }
-
-    /// Principal stresses (sorted descending: σ1 >= σ2 >= σ3).
-    ///
-    /// Convenience wrapper that logs a warning and falls back to hydrostatic
-    /// if the eigenvalue solver fails. Use [`try_principal_stresses`](Self::try_principal_stresses)
-    /// for explicit error handling.
+    /// Uses the closed-form analytical solution for eigenvalues of a 3x3
+    /// symmetric matrix via deviatoric stress invariants. Zero heap allocations.
     #[must_use]
     pub fn principal_stresses(&self) -> [f64; 3] {
-        match self.try_principal_stresses() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("principal_stresses fallback to hydrostatic: {e}");
-                let h = self.hydrostatic();
-                [h, h, h]
-            }
+        let mean = self.hydrostatic();
+        let j2 = self.j2();
+
+        if j2 < 1e-30 {
+            // Hydrostatic state — all principals equal
+            return [mean, mean, mean];
         }
+
+        // Third deviatoric invariant J3 = det(s)
+        let dev = self.deviatoric();
+        let [s11, s22, s33, s12, s23, s13] = dev.components;
+        let j3 = s11 * s22 * s33 + 2.0 * s12 * s23 * s13
+            - s11 * s23 * s23
+            - s22 * s13 * s13
+            - s33 * s12 * s12;
+
+        // Lode angle: cos(3θ) = (3√3/2) * J3 / J2^(3/2)
+        let r = 1.5 * (3.0_f64).sqrt() * j3 / j2.powf(1.5);
+        let lode_angle = (r.clamp(-1.0, 1.0)).acos() / 3.0;
+
+        let mag = 2.0 * (j2 / 3.0).sqrt();
+        let two_pi_3 = 2.0 * std::f64::consts::PI / 3.0;
+
+        let mut principals = [
+            mean + mag * lode_angle.cos(),
+            mean + mag * (lode_angle - two_pi_3).cos(),
+            mean + mag * (lode_angle + two_pi_3).cos(),
+        ];
+        principals.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        principals
     }
 
     /// Octahedral shear stress: τ_oct = sqrt(2/3) * sqrt(J2)
@@ -334,17 +322,6 @@ mod tests {
             (tau - 50.0).abs() < 1e-6,
             "max shear of uniaxial should be σ/2, got {tau}"
         );
-    }
-
-    #[test]
-    fn as_matrix_symmetric() {
-        let s = StressTensor::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-        let m = s.as_matrix();
-        for (i, row) in m.iter().enumerate() {
-            for (j, &val) in row.iter().enumerate() {
-                assert_eq!(val, m[j][i], "matrix should be symmetric at [{i}][{j}]");
-            }
-        }
     }
 
     #[test]

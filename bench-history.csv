@@ -242,3 +242,107 @@ test fatigue/rainflow_100 ... bench:        1767 ns/iter (+/- 177)
 
 test fatigue/neuber_ramberg_osgood ... bench:         158 ns/iter (+/- 29)
 
+test stress/von_mises ... bench:           4 ns/iter (+/- 0)
+
+test stress/principal_stresses ... bench:         860 ns/iter (+/- 167)
+
+test stress/max_shear ... bench:         868 ns/iter (+/- 199)
+
+test stress/j2 ... bench:           3 ns/iter (+/- 0)
+
+test stress/deviatoric ... bench:           5 ns/iter (+/- 0)
+
+test elastic/hookes_law ... bench:           1 ns/iter (+/- 0)
+
+test elastic/bulk_modulus ... bench:           2 ns/iter (+/- 0)
+
+test beam/cantilever_deflection ... bench:           3 ns/iter (+/- 0)
+
+test beam/euler_buckling ... bench:           2 ns/iter (+/- 0)
+
+test yield/safety_factor ... bench:           6 ns/iter (+/- 0)
+
+test fatigue/basquin_cycles ... bench:          20 ns/iter (+/- 2)
+
+test fatigue/miners_rule_100 ... bench:         127 ns/iter (+/- 18)
+
+test fatigue/goodman_correction ... bench:           2 ns/iter (+/- 0)
+
+test strain/effective_strain ... bench:           5 ns/iter (+/- 0)
+
+test constitutive/stress_from_strain ... bench:           8 ns/iter (+/- 1)
+
+test constitutive/stiffness_matrix ... bench:           9 ns/iter (+/- 4)
+
+test constitutive/elastic_perfectly_plastic ... bench:           2 ns/iter (+/- 0)
+
+test constitutive/bilinear_hardening ... bench:           3 ns/iter (+/- 1)
+
+test constitutive/ramberg_osgood_strain ... bench:          15 ns/iter (+/- 4)
+
+test constitutive/ramberg_osgood_stress ... bench:         234 ns/iter (+/- 62)
+
+test composite/abd_matrix_4ply ... bench:         136 ns/iter (+/- 3)
+
+test composite/tsai_wu ... bench:          10 ns/iter (+/- 0)
+
+test composite/transform_stress ... bench:          13 ns/iter (+/- 0)
+
+test constitutive/iso_hardening ... bench:           3 ns/iter (+/- 0)
+
+test fatigue/rainflow_100 ... bench:        1902 ns/iter (+/- 187)
+
+test fatigue/neuber_ramberg_osgood ... bench:         269 ns/iter (+/- 37)
+
+test stress/von_mises ... bench:           5 ns/iter (+/- 1)
+
+test stress/principal_stresses ... bench:          97 ns/iter (+/- 10)
+
+test stress/max_shear ... bench:         107 ns/iter (+/- 5)
+
+test stress/j2 ... bench:           3 ns/iter (+/- 0)
+
+test stress/deviatoric ... bench:           4 ns/iter (+/- 0)
+
+test elastic/hookes_law ... bench:           0 ns/iter (+/- 0)
+
+test elastic/bulk_modulus ... bench:           2 ns/iter (+/- 0)
+
+test beam/cantilever_deflection ... bench:           2 ns/iter (+/- 0)
+
+test beam/euler_buckling ... bench:           2 ns/iter (+/- 0)
+
+test yield/safety_factor ... bench:           7 ns/iter (+/- 0)
+
+test fatigue/basquin_cycles ... bench:          21 ns/iter (+/- 2)
+
+test fatigue/miners_rule_100 ... bench:         128 ns/iter (+/- 13)
+
+test fatigue/goodman_correction ... bench:           2 ns/iter (+/- 0)
+
+test strain/effective_strain ... bench:           6 ns/iter (+/- 0)
+
+test constitutive/stress_from_strain ... bench:          12 ns/iter (+/- 1)
+
+test constitutive/stiffness_matrix ... bench:          14 ns/iter (+/- 2)
+
+test constitutive/elastic_perfectly_plastic ... bench:           3 ns/iter (+/- 0)
+
+test constitutive/bilinear_hardening ... bench:           4 ns/iter (+/- 1)
+
+test constitutive/ramberg_osgood_strain ... bench:          17 ns/iter (+/- 3)
+
+test constitutive/ramberg_osgood_stress ... bench:         242 ns/iter (+/- 40)
+
+test composite/abd_matrix_4ply ... bench:         138 ns/iter (+/- 25)
+
+test composite/tsai_wu ... bench:           9 ns/iter (+/- 2)
+
+test composite/transform_stress ... bench:          20 ns/iter (+/- 4)
+
+test constitutive/iso_hardening ... bench:           5 ns/iter (+/- 0)
+
+test fatigue/rainflow_100 ... bench:        2523 ns/iter (+/- 78)
+
+test fatigue/neuber_ramberg_osgood ... bench:         338 ns/iter (+/- 16)
+

@@ -74,8 +74,9 @@ pub use constitutive::{
 
 // Composite
 pub use composite::{
-    AbdMatrix, Lamina, Ply, PlyStress, abd_matrix, max_stress_failure_index,
+    AbdMatrix, Lamina, Ply, PlyStress, abd_inverse, abd_matrix, max_stress_failure_index,
     transform_stress_to_material, tsai_hill_failure_index, tsai_wu_failure_index,
+    tsai_wu_failure_index_custom,
 };
 
 // Fracture

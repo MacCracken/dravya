@@ -141,6 +141,7 @@ impl Mul<f64> for StrainTensor {
 #[inline]
 pub fn engineering_strain(original: f64, deformed: f64) -> f64 {
     if original.abs() < hisab::EPSILON_F64 {
+        tracing::warn!("engineering_strain: zero original length, returning 0.0");
         return 0.0;
     }
     (deformed - original) / original
@@ -151,6 +152,9 @@ pub fn engineering_strain(original: f64, deformed: f64) -> f64 {
 #[inline]
 pub fn true_strain(original: f64, deformed: f64) -> f64 {
     if original <= 0.0 || deformed <= 0.0 {
+        tracing::warn!(
+            "true_strain: non-positive input (original={original}, deformed={deformed}), returning 0.0"
+        );
         return 0.0;
     }
     (deformed / original).ln()
@@ -242,7 +246,12 @@ mod tests {
         // exx=0.01, eyy=ezz=-0.003
         let s = StrainTensor::new(0.01, -0.003, -0.003, 0.0, 0.0, 0.0);
         let eff = s.effective_strain();
-        assert!(eff > 0.0, "effective strain should be positive");
+        // dev = (0.00867, -0.00433, -0.00433, 0, 0, 0)
+        // eff = sqrt(2/3 * (7.51e-5 + 1.88e-5 + 1.88e-5)) ~ 0.00867
+        assert!(
+            (eff - 0.00867).abs() < 0.001,
+            "effective strain should be ~0.00867, got {eff}"
+        );
     }
 
     #[test]
