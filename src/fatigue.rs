@@ -272,6 +272,173 @@ pub fn marin_corrected_endurance(base_endurance: f64, factors: &[f64]) -> f64 {
     factors.iter().product::<f64>() * base_endurance
 }
 
+// --- Rainflow cycle counting ---
+
+/// Extract fatigue cycles from a load history using the rainflow algorithm.
+///
+/// Input: slice of stress peaks/valleys (turning points only — monotonic
+/// segments should be pre-filtered to extrema).
+///
+/// Returns a list of (stress_range, mean_stress, count) tuples.
+/// Half-cycles are counted as 0.5.
+#[must_use]
+pub fn rainflow_count(peaks: &[f64]) -> Vec<(f64, f64, f64)> {
+    if peaks.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut cycles = Vec::new();
+    let mut stack: Vec<f64> = Vec::new();
+
+    for &peak in peaks {
+        stack.push(peak);
+        while stack.len() >= 3 {
+            let n = stack.len();
+            let range_last = (stack[n - 1] - stack[n - 2]).abs();
+            let range_prev = (stack[n - 2] - stack[n - 3]).abs();
+
+            if range_last >= range_prev {
+                // The middle range is a full cycle
+                let s_max = stack[n - 2].max(stack[n - 3]);
+                let s_min = stack[n - 2].min(stack[n - 3]);
+                let range = s_max - s_min;
+                let mean = (s_max + s_min) / 2.0;
+                cycles.push((range, mean, 1.0));
+                // Remove the two points forming the cycle
+                stack.remove(n - 3);
+                stack.remove(n - 3); // n-2 shifted to n-3
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Remaining points form half-cycles
+    for window in stack.windows(2) {
+        let range = (window[1] - window[0]).abs();
+        let mean = (window[1] + window[0]) / 2.0;
+        cycles.push((range, mean, 0.5));
+    }
+
+    cycles
+}
+
+// --- SN curve interpolation ---
+
+/// Interpolate cycles to failure from tabulated SN data.
+///
+/// `sn_data`: slice of (stress_amplitude, cycles_to_failure) sorted by
+/// descending stress. Uses log-log linear interpolation between data points.
+///
+/// Returns cycles to failure for the given stress amplitude, or `None`
+/// if outside the data range.
+#[must_use]
+pub fn sn_interpolate(sn_data: &[(f64, f64)], stress_amplitude: f64) -> Option<f64> {
+    if sn_data.len() < 2 || stress_amplitude <= 0.0 {
+        return None;
+    }
+
+    let log_s = stress_amplitude.ln();
+
+    // Find bracketing interval (data sorted descending by stress)
+    for window in sn_data.windows(2) {
+        let (s_high, n_high) = window[0];
+        let (s_low, n_low) = window[1];
+
+        if stress_amplitude <= s_high && stress_amplitude >= s_low {
+            if s_high <= 0.0 || s_low <= 0.0 || n_high <= 0.0 || n_low <= 0.0 {
+                return None;
+            }
+            let log_s_high = s_high.ln();
+            let log_s_low = s_low.ln();
+            let log_n_high = n_high.ln();
+            let log_n_low = n_low.ln();
+
+            let denom = log_s_high - log_s_low;
+            if denom.abs() < hisab::EPSILON_F64 {
+                return Some(n_high);
+            }
+            let t = (log_s - log_s_low) / denom;
+            let log_n = log_n_low + t * (log_n_high - log_n_low);
+            return Some(log_n.exp());
+        }
+    }
+
+    None
+}
+
+// --- Neuber's rule ---
+
+/// Neuber's rule for elastic-plastic notch correction.
+///
+/// Given the elastic stress concentration factor Kt and the nominal
+/// stress/strain, Neuber's rule gives:
+///
+/// σ_local * ε_local = Kt² * σ_nominal * ε_nominal
+///
+/// For the elastic case (σ = Eε):
+/// σ_local * ε_local = Kt² * σ_nominal² / E
+///
+/// Returns the Neuber product (σ * ε at the notch root).
+#[must_use]
+#[inline]
+pub fn neuber_product(kt: f64, nominal_stress: f64, youngs_modulus: f64) -> f64 {
+    if youngs_modulus.abs() < hisab::EPSILON_F64 {
+        return 0.0;
+    }
+    kt * kt * nominal_stress * nominal_stress / youngs_modulus
+}
+
+/// Solve Neuber's rule with Ramberg-Osgood material for notch-root stress.
+///
+/// Finds local stress σ satisfying:
+/// σ * (σ/E + (σ/K)^n) = Kt² * S² / E
+///
+/// Uses [`hisab::num::newton_raphson`]. Returns (notch_stress, notch_strain),
+/// or `Err` if the solver fails to converge.
+pub fn neuber_ramberg_osgood(
+    kt: f64,
+    nominal_stress: f64,
+    youngs_modulus: f64,
+    strength_coeff: f64,
+    hardening_exp: f64,
+    tol: f64,
+    max_iter: usize,
+) -> crate::Result<(f64, f64)> {
+    let target = neuber_product(kt, nominal_stress, youngs_modulus);
+    if target.abs() < hisab::EPSILON_F64 {
+        return Ok((0.0, 0.0));
+    }
+
+    let ro_strain = |sigma: f64| {
+        crate::constitutive::ramberg_osgood_strain(
+            youngs_modulus,
+            strength_coeff,
+            hardening_exp,
+            sigma,
+        )
+    };
+
+    let f = |sigma: f64| sigma * ro_strain(sigma) - target;
+    let df = |sigma: f64| {
+        let eps = ro_strain(sigma);
+        let d_elastic = 1.0 / youngs_modulus;
+        let d_plastic = if sigma.abs() < hisab::EPSILON_F64 {
+            0.0
+        } else {
+            (hardening_exp / strength_coeff)
+                * (sigma.abs() / strength_coeff).powf(hardening_exp - 1.0)
+        };
+        eps + sigma * (d_elastic + d_plastic)
+    };
+
+    let x0 = kt * nominal_stress;
+    let sigma = hisab::num::newton_raphson(f, df, x0, tol, max_iter)
+        .map_err(|e| crate::DravyaError::ComputationError(format!("neuber_ramberg_osgood: {e}")))?;
+    let eps = ro_strain(sigma);
+    Ok((sigma, eps))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,5 +657,129 @@ mod tests {
     fn marin_corrected_no_factors() {
         let se = marin_corrected_endurance(250e6, &[]);
         assert!((se - 250e6).abs() < hisab::EPSILON_F64);
+    }
+
+    // --- Rainflow tests ---
+
+    #[test]
+    fn rainflow_simple_cycle() {
+        // One full cycle: 0 -> 100 -> 0 -> 100 -> 0
+        let peaks = vec![0.0, 100.0, 0.0, 100.0, 0.0];
+        let cycles = rainflow_count(&peaks);
+        assert!(!cycles.is_empty(), "should extract cycles");
+        // Should find at least one full cycle with range=100
+        let full_cycles: Vec<_> = cycles.iter().filter(|c| c.2 >= 1.0).collect();
+        assert!(
+            !full_cycles.is_empty(),
+            "should have at least one full cycle"
+        );
+    }
+
+    #[test]
+    fn rainflow_empty() {
+        assert!(rainflow_count(&[]).is_empty());
+        assert!(rainflow_count(&[100.0]).is_empty());
+    }
+
+    #[test]
+    fn rainflow_two_points() {
+        let cycles = rainflow_count(&[0.0, 100.0]);
+        assert_eq!(cycles.len(), 1);
+        assert!(
+            (cycles[0].0 - 100.0).abs() < hisab::EPSILON_F64,
+            "range=100"
+        );
+        assert!((cycles[0].2 - 0.5).abs() < hisab::EPSILON_F64, "half-cycle");
+    }
+
+    #[test]
+    fn rainflow_preserves_damage() {
+        // Total damage should be consistent
+        let peaks = vec![0.0, 200.0, 50.0, 180.0, 20.0, 150.0, 0.0];
+        let cycles = rainflow_count(&peaks);
+        let total_count: f64 = cycles.iter().map(|c| c.2).sum();
+        assert!(total_count > 0.0, "should have positive cycle count");
+    }
+
+    // --- SN interpolation tests ---
+
+    #[test]
+    fn sn_interpolate_basic() {
+        // Simple SN data (descending stress)
+        let sn_data = vec![
+            (300e6, 1e4), // 300 MPa -> 10^4 cycles
+            (200e6, 1e5), // 200 MPa -> 10^5 cycles
+            (100e6, 1e6), // 100 MPa -> 10^6 cycles
+        ];
+        let n = sn_interpolate(&sn_data, 200e6);
+        assert!(n.is_some());
+        assert!((n.unwrap() - 1e5).abs() < 1e3, "exact point should match");
+    }
+
+    #[test]
+    fn sn_interpolate_between_points() {
+        let sn_data = vec![(300e6, 1e4), (100e6, 1e6)];
+        let n = sn_interpolate(&sn_data, 200e6);
+        assert!(n.is_some());
+        let cycles = n.unwrap();
+        assert!(cycles > 1e4 && cycles < 1e6, "should be between bounds");
+    }
+
+    #[test]
+    fn sn_interpolate_out_of_range() {
+        let sn_data = vec![(300e6, 1e4), (100e6, 1e6)];
+        assert!(sn_interpolate(&sn_data, 400e6).is_none());
+        assert!(sn_interpolate(&sn_data, 50e6).is_none());
+    }
+
+    #[test]
+    fn sn_interpolate_higher_stress_fewer_cycles() {
+        let sn_data = vec![(300e6, 1e4), (200e6, 1e5), (100e6, 1e6)];
+        let n_high = sn_interpolate(&sn_data, 250e6).unwrap();
+        let n_low = sn_interpolate(&sn_data, 150e6).unwrap();
+        assert!(n_high < n_low, "higher stress = fewer cycles");
+    }
+
+    // --- Neuber tests ---
+
+    #[test]
+    fn neuber_product_basic() {
+        // Kt=2, σ_nom=100 MPa, E=200 GPa
+        // Product = 4 * (100e6)^2 / 200e9 = 4e16 / 2e11 = 200000 Pa
+        let np = neuber_product(2.0, 100e6, 200e9);
+        assert!(
+            (np - 200_000.0).abs() < 1.0,
+            "Neuber product should be 200000, got {np}"
+        );
+    }
+
+    #[test]
+    fn neuber_product_kt1() {
+        // Kt=1 (no notch): σ*ε = σ²/E (purely elastic)
+        let np = neuber_product(1.0, 100e6, 200e9);
+        let elastic = 100e6 * 100e6 / 200e9;
+        assert!((np - elastic).abs() < hisab::EPSILON_F64);
+    }
+
+    #[test]
+    fn neuber_ramberg_osgood_converges() {
+        let (sigma, eps) = neuber_ramberg_osgood(2.0, 100e6, 200e9, 1000e6, 10.0, 1e-6, 50)
+            .expect("should converge");
+        assert!(sigma > 0.0);
+        assert!(eps > 0.0);
+        // Verify Neuber's rule: σ*ε ≈ Kt²*S²/E
+        let target = neuber_product(2.0, 100e6, 200e9);
+        let actual = sigma * eps;
+        assert!(
+            (actual - target).abs() / target < 0.001,
+            "Neuber product mismatch: {actual} vs {target}"
+        );
+    }
+
+    #[test]
+    fn neuber_ramberg_osgood_notch_exceeds_nominal() {
+        let (sigma, _) = neuber_ramberg_osgood(3.0, 100e6, 200e9, 1000e6, 10.0, 1e-6, 50)
+            .expect("should converge");
+        assert!(sigma > 100e6, "notch stress should exceed nominal");
     }
 }

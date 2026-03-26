@@ -9,6 +9,7 @@ use crate::elastic;
 /// Engineering material with mechanical properties.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Material {
+    /// Material name / identifier.
     pub name: String,
     /// Young's modulus (Pa).
     pub youngs_modulus: f64,
@@ -269,6 +270,94 @@ impl Default for Material {
     }
 }
 
+/// Temperature-dependent material properties.
+///
+/// Stores material properties at discrete temperatures and linearly
+/// interpolates for arbitrary temperature queries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TempDependentMaterial {
+    pub name: String,
+    /// (temperature_K, material_at_that_temperature) pairs,
+    /// sorted by ascending temperature.
+    points: Vec<(f64, Material)>,
+}
+
+impl TempDependentMaterial {
+    /// Create from a set of (temperature, material) data points.
+    ///
+    /// Points will be sorted by temperature. At least one point is required.
+    pub fn new(name: impl Into<String>, mut points: Vec<(f64, Material)>) -> crate::Result<Self> {
+        if points.is_empty() {
+            return Err(crate::DravyaError::InvalidMaterial(
+                "at least one temperature point required".into(),
+            ));
+        }
+        points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(Self {
+            name: name.into(),
+            points,
+        })
+    }
+
+    /// Interpolate material properties at the given temperature (K).
+    ///
+    /// Clamps to the nearest data point if outside the defined range.
+    #[must_use]
+    pub fn at_temperature(&self, temp: f64) -> Material {
+        if self.points.len() == 1 {
+            return self.points[0].1.clone();
+        }
+
+        // Clamp to range
+        let first = &self.points[0];
+        let last = &self.points[self.points.len() - 1];
+        if temp <= first.0 {
+            return first.1.clone();
+        }
+        if temp >= last.0 {
+            return last.1.clone();
+        }
+
+        // Find bracketing interval
+        for window in self.points.windows(2) {
+            let (t_lo, m_lo) = &window[0];
+            let (t_hi, m_hi) = &window[1];
+            if temp >= *t_lo && temp <= *t_hi {
+                let dt = t_hi - t_lo;
+                if dt.abs() < hisab::EPSILON_F64 {
+                    return m_lo.clone();
+                }
+                let t = (temp - t_lo) / dt;
+                return Self::lerp_material(m_lo, m_hi, t);
+            }
+        }
+
+        last.1.clone()
+    }
+
+    /// Temperature range covered by the data.
+    #[must_use]
+    pub fn temperature_range(&self) -> (f64, f64) {
+        (self.points[0].0, self.points[self.points.len() - 1].0)
+    }
+
+    fn lerp_material(a: &Material, b: &Material, t: f64) -> Material {
+        let lerp = |x: f64, y: f64| x + t * (y - x);
+        Material {
+            name: a.name.clone(),
+            youngs_modulus: lerp(a.youngs_modulus, b.youngs_modulus),
+            poisson_ratio: lerp(a.poisson_ratio, b.poisson_ratio),
+            yield_strength: lerp(a.yield_strength, b.yield_strength),
+            ultimate_tensile_strength: lerp(
+                a.ultimate_tensile_strength,
+                b.ultimate_tensile_strength,
+            ),
+            density: lerp(a.density, b.density),
+            thermal_expansion: lerp(a.thermal_expansion, b.thermal_expansion),
+        }
+    }
+}
+
 impl fmt::Display for Material {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -449,5 +538,87 @@ mod tests {
         // Zero yield is valid (e.g., fluids)
         let m = Material::new("Fluid", 200e9, 0.30, 0.0, 0.0, 1000.0, 0.0);
         assert!(m.is_ok());
+    }
+
+    // --- Temperature-dependent material tests ---
+
+    #[test]
+    fn temp_dependent_single_point() {
+        let tdm = TempDependentMaterial::new("Steel", vec![(293.0, Material::steel())]).unwrap();
+        let m = tdm.at_temperature(500.0);
+        assert_eq!(m.youngs_modulus, Material::steel().youngs_modulus);
+    }
+
+    #[test]
+    fn temp_dependent_interpolation() {
+        let m_low = Material::steel(); // E = 200 GPa at 293 K
+        let mut m_high = Material::steel();
+        m_high.youngs_modulus = 150e9; // E = 150 GPa at 800 K
+
+        let tdm =
+            TempDependentMaterial::new("Steel", vec![(293.0, m_low), (800.0, m_high)]).unwrap();
+
+        // Midpoint: (293+800)/2 = 546.5 K -> E should be ~175 GPa
+        let m = tdm.at_temperature(546.5);
+        assert!(
+            (m.youngs_modulus - 175e9).abs() < 1e9,
+            "E at midpoint should be ~175 GPa, got {}",
+            m.youngs_modulus / 1e9
+        );
+    }
+
+    #[test]
+    fn temp_dependent_clamps_low() {
+        let tdm = TempDependentMaterial::new(
+            "Steel",
+            vec![(293.0, Material::steel()), (800.0, Material::steel())],
+        )
+        .unwrap();
+        let m = tdm.at_temperature(100.0); // below range
+        assert_eq!(m.youngs_modulus, Material::steel().youngs_modulus);
+    }
+
+    #[test]
+    fn temp_dependent_clamps_high() {
+        let mut m_high = Material::steel();
+        m_high.youngs_modulus = 150e9;
+        let tdm = TempDependentMaterial::new(
+            "Steel",
+            vec![(293.0, Material::steel()), (800.0, m_high.clone())],
+        )
+        .unwrap();
+        let m = tdm.at_temperature(1000.0); // above range
+        assert_eq!(m.youngs_modulus, m_high.youngs_modulus);
+    }
+
+    #[test]
+    fn temp_dependent_empty_errors() {
+        let result = TempDependentMaterial::new("Empty", vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn temp_dependent_range() {
+        let tdm = TempDependentMaterial::new(
+            "Steel",
+            vec![(293.0, Material::steel()), (800.0, Material::steel())],
+        )
+        .unwrap();
+        assert_eq!(tdm.temperature_range(), (293.0, 800.0));
+    }
+
+    #[test]
+    fn temp_dependent_modulus_decreases() {
+        let mut m_high = Material::steel();
+        m_high.youngs_modulus = 150e9;
+        let tdm =
+            TempDependentMaterial::new("Steel", vec![(293.0, Material::steel()), (800.0, m_high)])
+                .unwrap();
+        let m_400 = tdm.at_temperature(400.0);
+        let m_600 = tdm.at_temperature(600.0);
+        assert!(
+            m_600.youngs_modulus < m_400.youngs_modulus,
+            "E should decrease with temperature"
+        );
     }
 }

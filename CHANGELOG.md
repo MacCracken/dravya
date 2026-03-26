@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0] - 2026-03-26
 
 ### Added
 - **material** — `ultimate_tensile_strength` field on `Material`, convenience methods `shear_modulus()`, `bulk_modulus()`, `lame_lambda()`, `thermal_strain()`, `thermal_stress()`; `Default` and `Display` trait implementations

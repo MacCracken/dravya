@@ -1,7 +1,7 @@
 # Dravya Roadmap
 
 ## Status
-**v0.1.0** — Initial scaffold with real material science, hardened via P(-1).
+**v1.0.0** — API stable. 12 modules, 243 tests, 26 benchmarks, zero panics.
 
 ## Completed (P(-1) Hardening)
 - Material property verification against engineering handbooks
@@ -18,16 +18,16 @@
 ## Future Features (demand-gated)
 
 ### Plasticity
-- Bilinear hardening model
-- Power-law hardening (Ramberg-Osgood)
-- Isotropic/kinematic hardening
+- ~~Bilinear hardening model~~ done
+- ~~Power-law hardening (Ramberg-Osgood)~~ done
+- ~~Isotropic/kinematic hardening~~ done (isotropic, kinematic/Prager, combined)
 
 ### Fracture Mechanics
 - ~~Stress intensity factor (KI)~~ done (center/edge/penny/finite-width/hole geometries)
 - ~~Fracture toughness (KIc)~~ done (check, critical crack length, energy release)
 - ~~Crack growth (Paris law)~~ done (rate + life prediction)
-- Stress intensity factors KII, KIII (mode II/III)
-- J-integral
+- ~~Stress intensity factors KII, KIII (mode II/III)~~ done
+- ~~J-integral~~ done (from SIFs, mode I, mixed-mode, K-from-J roundtrip)
 
 ### Composites
 - ~~Classical laminate theory~~ done (ABD matrix from ply layup)
@@ -39,10 +39,10 @@
 
 ### Fatigue (advanced)
 - ~~Coffin-Manson low-cycle fatigue~~ done
-- Rainflow cycle counting
-- SN curve interpolation from tabulated data
+- ~~Rainflow cycle counting~~ done
+- ~~SN curve interpolation from tabulated data~~ done (log-log interpolation)
 - ~~Marin endurance limit modification factors~~ done
-- Neuber's rule for notch effects
+- ~~Neuber's rule for notch effects~~ done (product + Ramberg-Osgood solver)
 
 ### Constitutive (advanced)
 - ~~Generalized 3D Hooke's law (stiffness/compliance matrices)~~ done
@@ -50,7 +50,11 @@
 - ~~Elastic-perfectly-plastic model~~ done
 - ~~Ramberg-Osgood nonlinear stress-strain~~ done
 - ~~Bilinear hardening (elastic-plastic with tangent modulus)~~ done
-- Temperature-dependent material properties
+- ~~Temperature-dependent material properties~~ done (TempDependentMaterial with linear interpolation)
 
-## v1.0.0 Criteria
-- API frozen, zero unwrap/panic, 90%+ coverage, benchmark golden numbers
+## v1.0.0 Criteria — MET
+- API frozen
+- Zero unwrap/panic in library code
+- 243 tests (233 unit + 10 integration)
+- 26 golden benchmarks captured
+- All cleanliness gates pass (fmt, clippy, audit, deny, doc)

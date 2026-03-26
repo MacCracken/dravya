@@ -1,10 +1,10 @@
 [package]
 name = "dravya"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0"
-description = "Dravya — material science engine for stress, strain, elasticity, and fatigue analysis"
+description = "Dravya — material science engine for stress, strain, elasticity, fatigue, fracture, composites, and constitutive models"
 homepage = "https://github.com/MacCracken/dravya"
 repository = "https://github.com/MacCracken/dravya"
 readme = "README.md"

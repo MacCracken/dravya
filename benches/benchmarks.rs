@@ -199,6 +199,96 @@ criterion_group!(
     bench_epp,
     bench_bilinear,
     bench_ramberg_osgood,
-    bench_ramberg_osgood_inverse
+    bench_ramberg_osgood_inverse,
+    bench_abd_matrix,
+    bench_tsai_wu,
+    bench_transform_ply_stress,
+    bench_iso_hardening,
+    bench_rainflow,
+    bench_neuber_ro
 );
 criterion_main!(benches);
+
+fn bench_abd_matrix(c: &mut Criterion) {
+    let l = dravya::Lamina::carbon_epoxy();
+    let plies = vec![
+        dravya::Ply {
+            lamina: l.clone(),
+            angle: 0.0,
+            thickness: 0.000125,
+        },
+        dravya::Ply {
+            lamina: l.clone(),
+            angle: std::f64::consts::FRAC_PI_4,
+            thickness: 0.000125,
+        },
+        dravya::Ply {
+            lamina: l.clone(),
+            angle: -std::f64::consts::FRAC_PI_4,
+            thickness: 0.000125,
+        },
+        dravya::Ply {
+            lamina: l.clone(),
+            angle: std::f64::consts::FRAC_PI_2,
+            thickness: 0.000125,
+        },
+    ];
+    c.bench_function("composite/abd_matrix_4ply", |b| {
+        b.iter(|| dravya::abd_matrix(black_box(&plies)));
+    });
+}
+
+fn bench_tsai_wu(c: &mut Criterion) {
+    let l = dravya::Lamina::carbon_epoxy();
+    let s = dravya::PlyStress {
+        sigma1: 500e6,
+        sigma2: 20e6,
+        tau12: 30e6,
+    };
+    c.bench_function("composite/tsai_wu", |b| {
+        b.iter(|| dravya::tsai_wu_failure_index(black_box(&s), black_box(&l)));
+    });
+}
+
+fn bench_transform_ply_stress(c: &mut Criterion) {
+    c.bench_function("composite/transform_stress", |b| {
+        b.iter(|| {
+            dravya::transform_stress_to_material(
+                black_box(100e6),
+                black_box(50e6),
+                black_box(30e6),
+                black_box(0.785),
+            )
+        });
+    });
+}
+
+fn bench_iso_hardening(c: &mut Criterion) {
+    let state = dravya::IsotropicHardening::new(250e6, 10e9);
+    c.bench_function("constitutive/iso_hardening", |b| {
+        b.iter(|| state.apply_uniaxial(black_box(200e9), black_box(0.005)));
+    });
+}
+
+fn bench_rainflow(c: &mut Criterion) {
+    let peaks: Vec<f64> = (0..100).map(|i| 100.0 * (i as f64 * 0.1).sin()).collect();
+    c.bench_function("fatigue/rainflow_100", |b| {
+        b.iter(|| dravya::fatigue::rainflow_count(black_box(&peaks)));
+    });
+}
+
+fn bench_neuber_ro(c: &mut Criterion) {
+    c.bench_function("fatigue/neuber_ramberg_osgood", |b| {
+        b.iter(|| {
+            dravya::fatigue::neuber_ramberg_osgood(
+                black_box(2.5),
+                black_box(150e6),
+                black_box(200e9),
+                black_box(1000e6),
+                black_box(10.0),
+                1e-6,
+                50,
+            )
+        });
+    });
+}

@@ -190,3 +190,55 @@ test constitutive/ramberg_osgood_strain ... bench:          15 ns/iter (+/- 0)
 
 test constitutive/ramberg_osgood_stress ... bench:         209 ns/iter (+/- 0)
 
+test stress/von_mises ... bench:           4 ns/iter (+/- 0)
+
+test stress/principal_stresses ... bench:         806 ns/iter (+/- 7)
+
+test stress/max_shear ... bench:         807 ns/iter (+/- 22)
+
+test stress/j2 ... bench:           3 ns/iter (+/- 0)
+
+test stress/deviatoric ... bench:           3 ns/iter (+/- 0)
+
+test elastic/hookes_law ... bench:           0 ns/iter (+/- 0)
+
+test elastic/bulk_modulus ... bench:           1 ns/iter (+/- 0)
+
+test beam/cantilever_deflection ... bench:           1 ns/iter (+/- 0)
+
+test beam/euler_buckling ... bench:           1 ns/iter (+/- 0)
+
+test yield/safety_factor ... bench:           5 ns/iter (+/- 0)
+
+test fatigue/basquin_cycles ... bench:          13 ns/iter (+/- 0)
+
+test fatigue/miners_rule_100 ... bench:         115 ns/iter (+/- 0)
+
+test fatigue/goodman_correction ... bench:           2 ns/iter (+/- 0)
+
+test strain/effective_strain ... bench:           5 ns/iter (+/- 0)
+
+test constitutive/stress_from_strain ... bench:           8 ns/iter (+/- 0)
+
+test constitutive/stiffness_matrix ... bench:          11 ns/iter (+/- 1)
+
+test constitutive/elastic_perfectly_plastic ... bench:           2 ns/iter (+/- 0)
+
+test constitutive/bilinear_hardening ... bench:           3 ns/iter (+/- 0)
+
+test constitutive/ramberg_osgood_strain ... bench:          15 ns/iter (+/- 0)
+
+test constitutive/ramberg_osgood_stress ... bench:         210 ns/iter (+/- 4)
+
+test composite/abd_matrix_4ply ... bench:         132 ns/iter (+/- 3)
+
+test composite/tsai_wu ... bench:           7 ns/iter (+/- 0)
+
+test composite/transform_stress ... bench:          12 ns/iter (+/- 0)
+
+test constitutive/iso_hardening ... bench:           3 ns/iter (+/- 1)
+
+test fatigue/rainflow_100 ... bench:        1767 ns/iter (+/- 177)
+
+test fatigue/neuber_ramberg_osgood ... bench:         158 ns/iter (+/- 29)
+

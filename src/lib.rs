@@ -24,7 +24,7 @@ pub mod logging;
 
 // Core types
 pub use error::{DravyaError, Result};
-pub use material::Material;
+pub use material::{Material, TempDependentMaterial};
 pub use strain::StrainTensor;
 pub use stress::StressTensor;
 
@@ -57,7 +57,8 @@ pub use fatigue::{
     basquin_cycles, basquin_cycles_reversals, coffin_manson_strain, coffin_manson_transition_life,
     endurance_limit_estimate, gerber_correction, goodman_correction, is_fatigue_failure,
     marin_corrected_endurance, marin_reliability_factor, marin_size_factor, marin_surface_factor,
-    miners_rule, soderberg_correction, stress_amplitude_mean, stress_ratio,
+    miners_rule, neuber_product, neuber_ramberg_osgood, rainflow_count, sn_interpolate,
+    soderberg_correction, stress_amplitude_mean, stress_ratio,
 };
 
 // Strain
@@ -65,9 +66,10 @@ pub use strain::{engineering_strain, true_strain, try_engineering_strain, try_tr
 
 // Constitutive
 pub use constitutive::{
-    bilinear_hardening, compliance_matrix, elastic_perfectly_plastic,
-    elastic_perfectly_plastic_material, ramberg_osgood_strain, ramberg_osgood_stress,
-    stiffness_matrix, strain_from_stress_3d, stress_from_strain_3d,
+    CombinedHardening, IsotropicHardening, KinematicHardening, bilinear_hardening,
+    compliance_matrix, elastic_perfectly_plastic, elastic_perfectly_plastic_material,
+    ramberg_osgood_strain, ramberg_osgood_stress, stiffness_matrix, strain_from_stress_3d,
+    stress_from_strain_3d,
 };
 
 // Composite
@@ -78,7 +80,8 @@ pub use composite::{
 
 // Fracture
 pub use fracture::{
-    critical_crack_length, fracture_check, fracture_stress, ki_center_crack_finite,
-    ki_center_crack_infinite, ki_crack_at_hole, ki_edge_crack, ki_penny_crack,
-    kic_from_energy_release, paris_law_life, paris_law_rate,
+    critical_crack_length, fracture_check, fracture_stress, j_integral_from_sifs,
+    j_integral_mode_i, k_from_j_integral, ki_center_crack_finite, ki_center_crack_infinite,
+    ki_crack_at_hole, ki_edge_crack, ki_penny_crack, kic_from_energy_release, kii_center_crack,
+    kii_edge_crack, kiii_through_crack, paris_law_life, paris_law_rate,
 };

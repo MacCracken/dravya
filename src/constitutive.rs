@@ -1,7 +1,10 @@
 //! Constitutive models: stress-strain relationships beyond simple Hooke's law.
 //!
 //! Provides isotropic stiffness/compliance matrices (Voigt notation),
-//! tensor conversion, and material models (elastic-perfectly-plastic).
+//! tensor conversion, material models (EPP, bilinear, Ramberg-Osgood),
+//! and hardening laws (isotropic, kinematic, combined).
+
+use serde::{Deserialize, Serialize};
 
 use crate::material::Material;
 use crate::strain::StrainTensor;
@@ -222,11 +225,9 @@ pub fn ramberg_osgood_strain(
 
 /// Inverse Ramberg-Osgood: find stress from total strain.
 ///
-/// Uses Newton-Raphson iteration to solve ε = σ/E + (σ/K)^n for σ.
+/// Uses [`hisab::num::newton_raphson`] to solve ε = σ/E + (σ/K)^n for σ.
 ///
-/// Returns (stress, converged). If not converged after `max_iter`,
-/// returns best estimate with `converged = false`.
-#[must_use]
+/// Returns the converged stress, or `Err` if the solver fails.
 pub fn ramberg_osgood_stress(
     youngs_modulus: f64,
     strength_coeff: f64,
@@ -234,22 +235,15 @@ pub fn ramberg_osgood_stress(
     strain: f64,
     tol: f64,
     max_iter: usize,
-) -> (f64, bool) {
+) -> crate::Result<f64> {
     if youngs_modulus.abs() < hisab::EPSILON_F64 {
-        return (0.0, true);
+        return Ok(0.0);
     }
-    // Initial guess: elastic
-    let mut sigma = youngs_modulus * strain;
 
-    for _ in 0..max_iter {
-        let eps_calc = ramberg_osgood_strain(youngs_modulus, strength_coeff, hardening_exp, sigma);
-        let residual = eps_calc - strain;
-
-        if residual.abs() < tol {
-            return (sigma, true);
-        }
-
-        // Derivative: dε/dσ = 1/E + (n/K) * (|σ|/K)^(n-1)
+    let f = |sigma: f64| {
+        ramberg_osgood_strain(youngs_modulus, strength_coeff, hardening_exp, sigma) - strain
+    };
+    let df = |sigma: f64| {
         let d_elastic = 1.0 / youngs_modulus;
         let d_plastic = if sigma.abs() < hisab::EPSILON_F64 {
             0.0
@@ -257,15 +251,211 @@ pub fn ramberg_osgood_stress(
             (hardening_exp / strength_coeff)
                 * (sigma.abs() / strength_coeff).powf(hardening_exp - 1.0)
         };
-        let deriv = d_elastic + d_plastic;
+        d_elastic + d_plastic
+    };
 
-        if deriv.abs() < hisab::EPSILON_F64 {
-            break;
+    let x0 = youngs_modulus * strain;
+    hisab::num::newton_raphson(f, df, x0, tol, max_iter)
+        .map_err(|e| crate::DravyaError::ComputationError(format!("ramberg_osgood_stress: {e}")))
+}
+
+// ---------------------------------------------------------------------------
+// Hardening models
+// ---------------------------------------------------------------------------
+
+/// Isotropic hardening state.
+///
+/// The yield surface expands uniformly as plastic strain accumulates.
+/// Current yield stress: σ_y(ε_p) = σ_y0 + H * ε_p_accumulated
+///
+/// H = isotropic hardening modulus (Pa).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct IsotropicHardening {
+    /// Initial yield strength (Pa).
+    pub initial_yield: f64,
+    /// Hardening modulus H (Pa). σ_y grows linearly with accumulated plastic strain.
+    pub hardening_modulus: f64,
+    /// Accumulated equivalent plastic strain (scalar, always >= 0).
+    pub accumulated_plastic_strain: f64,
+}
+
+impl IsotropicHardening {
+    /// Create a new isotropic hardening state.
+    #[must_use]
+    pub fn new(initial_yield: f64, hardening_modulus: f64) -> Self {
+        Self {
+            initial_yield,
+            hardening_modulus,
+            accumulated_plastic_strain: 0.0,
         }
-        sigma -= residual / deriv;
     }
 
-    (sigma, false)
+    /// Current yield stress.
+    #[must_use]
+    #[inline]
+    pub fn current_yield(&self) -> f64 {
+        self.initial_yield + self.hardening_modulus * self.accumulated_plastic_strain
+    }
+
+    /// Apply a uniaxial strain increment. Returns (stress, updated state).
+    ///
+    /// Uses a radial-return-like 1D algorithm:
+    /// 1. Trial stress = E * (total strain)
+    /// 2. If |trial| <= current yield: elastic
+    /// 3. Else: plastic correction
+    #[must_use]
+    pub fn apply_uniaxial(&self, youngs_modulus: f64, total_strain: f64) -> (f64, Self) {
+        let trial = youngs_modulus * total_strain;
+        let current_y = self.current_yield();
+
+        if trial.abs() <= current_y {
+            (trial, *self)
+        } else {
+            // Plastic: solve for stress and plastic strain increment
+            // σ = sign(trial) * (σ_y0 + H * (ε_p_old + Δε_p))
+            // σ = sign(trial) * σ_y0 + E * (ε - ε_p_old - Δε_p)  ... from elastic strain
+            // Combining: Δε_p = (|trial| - current_y) / (E + H)
+            let denom = youngs_modulus + self.hardening_modulus;
+            let d_ep = if denom.abs() < hisab::EPSILON_F64 {
+                0.0
+            } else {
+                (trial.abs() - current_y) / denom
+            };
+            let new_ep = self.accumulated_plastic_strain + d_ep;
+            let stress = trial.signum() * (self.initial_yield + self.hardening_modulus * new_ep);
+            let new_state = Self {
+                accumulated_plastic_strain: new_ep,
+                ..*self
+            };
+            (stress, new_state)
+        }
+    }
+}
+
+/// Kinematic hardening state (Prager linear kinematic).
+///
+/// The yield surface translates in stress space without expanding.
+/// Yield check: |σ - α| <= σ_y0
+///
+/// α = back-stress, evolves as dα = C * dε_p (Prager rule).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct KinematicHardening {
+    /// Initial yield strength (Pa, constant — surface does not expand).
+    pub yield_strength: f64,
+    /// Kinematic hardening modulus C (Pa).
+    pub hardening_modulus: f64,
+    /// Current back-stress (Pa).
+    pub back_stress: f64,
+}
+
+impl KinematicHardening {
+    /// Create a new kinematic hardening state.
+    #[must_use]
+    pub fn new(yield_strength: f64, hardening_modulus: f64) -> Self {
+        Self {
+            yield_strength,
+            hardening_modulus,
+            back_stress: 0.0,
+        }
+    }
+
+    /// Apply a uniaxial strain increment. Returns (stress, updated state).
+    #[must_use]
+    pub fn apply_uniaxial(&self, youngs_modulus: f64, total_strain: f64) -> (f64, Self) {
+        let trial = youngs_modulus * total_strain;
+        let shifted = trial - self.back_stress;
+
+        if shifted.abs() <= self.yield_strength {
+            (trial, *self)
+        } else {
+            let denom = youngs_modulus + self.hardening_modulus;
+            let d_ep = if denom.abs() < hisab::EPSILON_F64 {
+                0.0
+            } else {
+                (shifted.abs() - self.yield_strength) / denom
+            };
+            let sign = shifted.signum();
+            let new_back = self.back_stress + sign * self.hardening_modulus * d_ep;
+            let stress = new_back + sign * self.yield_strength;
+            let new_state = Self {
+                back_stress: new_back,
+                ..*self
+            };
+            (stress, new_state)
+        }
+    }
+}
+
+/// Combined isotropic + kinematic hardening state.
+///
+/// Yield check: |σ - α| <= σ_y(ε_p)
+///
+/// Both yield surface expansion (isotropic) and translation (kinematic)
+/// occur simultaneously.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CombinedHardening {
+    /// Initial yield strength (Pa).
+    pub initial_yield: f64,
+    /// Isotropic hardening modulus H_iso (Pa).
+    pub iso_modulus: f64,
+    /// Kinematic hardening modulus H_kin (Pa).
+    pub kin_modulus: f64,
+    /// Accumulated equivalent plastic strain.
+    pub accumulated_plastic_strain: f64,
+    /// Current back-stress.
+    pub back_stress: f64,
+}
+
+impl CombinedHardening {
+    /// Create a new combined hardening state.
+    #[must_use]
+    pub fn new(initial_yield: f64, iso_modulus: f64, kin_modulus: f64) -> Self {
+        Self {
+            initial_yield,
+            iso_modulus,
+            kin_modulus,
+            accumulated_plastic_strain: 0.0,
+            back_stress: 0.0,
+        }
+    }
+
+    /// Current yield radius (isotropic contribution).
+    #[must_use]
+    #[inline]
+    pub fn current_yield(&self) -> f64 {
+        self.initial_yield + self.iso_modulus * self.accumulated_plastic_strain
+    }
+
+    /// Apply a uniaxial strain increment. Returns (stress, updated state).
+    #[must_use]
+    pub fn apply_uniaxial(&self, youngs_modulus: f64, total_strain: f64) -> (f64, Self) {
+        let trial = youngs_modulus * total_strain;
+        let shifted = trial - self.back_stress;
+        let current_y = self.current_yield();
+
+        if shifted.abs() <= current_y {
+            (trial, *self)
+        } else {
+            let h_total = self.iso_modulus + self.kin_modulus;
+            let denom = youngs_modulus + h_total;
+            let d_ep = if denom.abs() < hisab::EPSILON_F64 {
+                0.0
+            } else {
+                (shifted.abs() - current_y) / denom
+            };
+            let sign = shifted.signum();
+            let new_ep = self.accumulated_plastic_strain + d_ep;
+            let new_back = self.back_stress + sign * self.kin_modulus * d_ep;
+            let new_yield = self.initial_yield + self.iso_modulus * new_ep;
+            let stress = new_back + sign * new_yield;
+            let new_state = Self {
+                accumulated_plastic_strain: new_ep,
+                back_stress: new_back,
+                ..*self
+            };
+            (stress, new_state)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -575,8 +765,8 @@ mod tests {
     fn ramberg_osgood_inverse_roundtrip() {
         let original_stress = 300e6;
         let eps = ramberg_osgood_strain(200e9, 1000e6, 10.0, original_stress);
-        let (recovered, converged) = ramberg_osgood_stress(200e9, 1000e6, 10.0, eps, 1e-6, 50);
-        assert!(converged, "Newton-Raphson should converge");
+        let recovered = ramberg_osgood_stress(200e9, 1000e6, 10.0, eps, 1e-6, 50)
+            .expect("Newton-Raphson should converge");
         assert!(
             (recovered - original_stress).abs() < 1e3,
             "roundtrip: expected {original_stress}, got {recovered}"
@@ -587,8 +777,8 @@ mod tests {
     fn ramberg_osgood_inverse_high_strain() {
         let original_stress = 800e6;
         let eps = ramberg_osgood_strain(200e9, 1000e6, 10.0, original_stress);
-        let (recovered, converged) = ramberg_osgood_stress(200e9, 1000e6, 10.0, eps, 1e-6, 50);
-        assert!(converged);
+        let recovered =
+            ramberg_osgood_stress(200e9, 1000e6, 10.0, eps, 1e-6, 50).expect("should converge");
         assert!(
             (recovered - original_stress).abs() < 1e3,
             "high strain roundtrip: expected {original_stress}, got {recovered}"
@@ -604,5 +794,128 @@ mod tests {
     #[test]
     fn ramberg_osgood_guard_zero_coeff() {
         assert_eq!(ramberg_osgood_strain(200e9, 0.0, 10.0, 100e6), 0.0);
+    }
+
+    // --- Isotropic hardening tests ---
+
+    #[test]
+    fn iso_hardening_elastic() {
+        let state = IsotropicHardening::new(250e6, 10e9);
+        let (stress, new_state) = state.apply_uniaxial(200e9, 0.001);
+        assert!((stress - 200e6).abs() < 1.0, "should be elastic");
+        assert!(
+            new_state.accumulated_plastic_strain.abs() < hisab::EPSILON_F64,
+            "no plastic strain in elastic region"
+        );
+    }
+
+    #[test]
+    fn iso_hardening_plastic() {
+        let state = IsotropicHardening::new(250e6, 10e9);
+        let (stress, new_state) = state.apply_uniaxial(200e9, 0.005);
+        assert!(stress > 250e6, "stress should exceed initial yield");
+        assert!(
+            new_state.accumulated_plastic_strain > 0.0,
+            "should have plastic strain"
+        );
+        assert!(
+            new_state.current_yield() > 250e6,
+            "yield should have expanded"
+        );
+    }
+
+    #[test]
+    fn iso_hardening_yield_grows() {
+        let state = IsotropicHardening::new(250e6, 10e9);
+        let (_, state1) = state.apply_uniaxial(200e9, 0.005);
+        let (_, state2) = state1.apply_uniaxial(200e9, 0.010);
+        assert!(
+            state2.current_yield() > state1.current_yield(),
+            "yield should keep growing"
+        );
+    }
+
+    // --- Kinematic hardening tests ---
+
+    #[test]
+    fn kin_hardening_elastic() {
+        let state = KinematicHardening::new(250e6, 10e9);
+        let (stress, new_state) = state.apply_uniaxial(200e9, 0.001);
+        assert!((stress - 200e6).abs() < 1.0);
+        assert!(
+            new_state.back_stress.abs() < hisab::EPSILON_F64,
+            "no back-stress shift in elastic"
+        );
+    }
+
+    #[test]
+    fn kin_hardening_plastic() {
+        let state = KinematicHardening::new(250e6, 10e9);
+        let (_, new_state) = state.apply_uniaxial(200e9, 0.005);
+        assert!(
+            new_state.back_stress > 0.0,
+            "back-stress should shift in tension"
+        );
+    }
+
+    #[test]
+    fn kin_hardening_bauschinger() {
+        // After tensile yielding, compressive yield should occur earlier
+        let state = KinematicHardening::new(250e6, 10e9);
+        let (_, state_after_tension) = state.apply_uniaxial(200e9, 0.005);
+        // Compressive yield now at: -(σ_y - back_stress) relative to back_stress
+        // i.e., yield in compression at α - σ_y (shifted down)
+        let compressive_yield =
+            state_after_tension.back_stress - state_after_tension.yield_strength;
+        // Original compressive yield would have been -250e6
+        assert!(
+            compressive_yield > -250e6,
+            "Bauschinger: compressive yield should be reduced, got {compressive_yield}"
+        );
+    }
+
+    // --- Combined hardening tests ---
+
+    #[test]
+    fn combined_elastic() {
+        let state = CombinedHardening::new(250e6, 5e9, 5e9);
+        let (stress, new_state) = state.apply_uniaxial(200e9, 0.001);
+        assert!((stress - 200e6).abs() < 1.0);
+        assert!(new_state.accumulated_plastic_strain.abs() < hisab::EPSILON_F64);
+        assert!(new_state.back_stress.abs() < hisab::EPSILON_F64);
+    }
+
+    #[test]
+    fn combined_plastic() {
+        let state = CombinedHardening::new(250e6, 5e9, 5e9);
+        let (stress, new_state) = state.apply_uniaxial(200e9, 0.005);
+        assert!(stress > 250e6);
+        assert!(new_state.accumulated_plastic_strain > 0.0);
+        assert!(new_state.back_stress > 0.0);
+        assert!(new_state.current_yield() > 250e6);
+    }
+
+    #[test]
+    fn combined_reduces_to_iso_when_kin_zero() {
+        let iso = IsotropicHardening::new(250e6, 10e9);
+        let combined = CombinedHardening::new(250e6, 10e9, 0.0);
+        let (s_iso, _) = iso.apply_uniaxial(200e9, 0.005);
+        let (s_comb, _) = combined.apply_uniaxial(200e9, 0.005);
+        assert!(
+            (s_iso - s_comb).abs() < 1.0,
+            "combined with H_kin=0 should match pure isotropic"
+        );
+    }
+
+    #[test]
+    fn combined_reduces_to_kin_when_iso_zero() {
+        let kin = KinematicHardening::new(250e6, 10e9);
+        let combined = CombinedHardening::new(250e6, 0.0, 10e9);
+        let (s_kin, _) = kin.apply_uniaxial(200e9, 0.005);
+        let (s_comb, _) = combined.apply_uniaxial(200e9, 0.005);
+        assert!(
+            (s_kin - s_comb).abs() < 1.0,
+            "combined with H_iso=0 should match pure kinematic"
+        );
     }
 }
