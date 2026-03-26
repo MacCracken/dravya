@@ -35,7 +35,7 @@
 - ~~Laminate stiffness matrices~~ done (Q, Q-bar, ABD)
 
 ### Thermal
-- ushma coupling for transient thermal analysis
+- ~~ushma coupling for transient thermal analysis~~ done (feature-gated `thermal` module)
 
 ### Fatigue (advanced)
 - ~~Coffin-Manson low-cycle fatigue~~ done

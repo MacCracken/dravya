@@ -20,6 +20,7 @@
 - **fatigue** — Coffin-Manson low-cycle fatigue (strain-life equation, transition life), Marin endurance limit modification factors (surface finish, size, reliability, corrected endurance)
 - **composite** — new module: `Lamina` type with orthotropic properties and presets (carbon/epoxy, glass/epoxy), reduced stiffness Q and transformed Q-bar matrices, Classical Laminate Theory ABD matrix and inverse, ply stress transformation, failure criteria (max stress, Tsai-Hill, Tsai-Wu with custom f* interaction parameter)
 - **material** — 4 new presets: stainless steel 304, gray cast iron, brass C36000, HDPE (13 total)
+- **thermal** — new module (feature-gated `thermal`): ushma coupling with `Material`-to-`ThermalMaterial` conversion, thermal strain/stress tensors, constrained thermal stress, mechanical strain extraction, 1D/2D thermal grid stress field computation, thermal yield detection, max safe temperature change
 - **benchmarks** — 12 new benchmarks: max_shear, j2, deviatoric, euler_buckling, safety_factor, basquin_cycles, miners_rule_100, goodman_correction, effective_strain, stress_from_strain, stiffness_matrix, elastic_perfectly_plastic
 
 ### Changed

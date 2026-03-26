@@ -22,6 +22,9 @@ pub mod yield_criteria;
 #[cfg(feature = "logging")]
 pub mod logging;
 
+#[cfg(feature = "thermal")]
+pub mod thermal;
+
 // Core types
 pub use error::{DravyaError, Result};
 pub use material::{Material, TempDependentMaterial};

@@ -12,6 +12,7 @@ dravya
 ├── constitutive.rs   — Stiffness/compliance matrices, stress-strain conversion, EPP, bilinear, Ramberg-Osgood
 ├── fracture.rs       — Stress intensity factors, fracture toughness, Paris law crack growth
 ├── fatigue.rs        — Basquin, Miner's rule, endurance limit, Goodman/Gerber/Soderberg corrections
+├── thermal.rs        — Ushma coupling: thermal strain/stress, grid bridging (feature: thermal)
 ├── error.rs          — DravyaError enum, Result alias
 └── logging.rs        — Optional tracing subscriber init (feature: logging)
 ```
