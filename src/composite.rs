@@ -146,7 +146,7 @@ pub struct Ply {
 /// {N}   [A  B] {ε⁰}
 /// {M} = [B  D] {κ}
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AbdMatrix {
     /// Extensional stiffness (3x3), units: N/m.
     pub a: [[f64; 3]; 3],
@@ -197,7 +197,7 @@ pub fn abd_matrix(plies: &[Ply]) -> AbdMatrix {
 // ---------------------------------------------------------------------------
 
 /// Ply stress state in material coordinates (1-2 system).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PlyStress {
     /// Stress in fiber direction (Pa).
     pub sigma1: f64,
