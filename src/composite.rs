@@ -317,6 +317,7 @@ pub fn tsai_hill_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
 /// Uses the default interaction term F12 = -0.5 * sqrt(F11 * F22).
 /// For custom interaction, use [`tsai_wu_failure_index_custom`].
 #[must_use]
+#[inline]
 pub fn tsai_wu_failure_index(stress: &PlyStress, lamina: &Lamina) -> f64 {
     tsai_wu_failure_index_custom(stress, lamina, -0.5)
 }

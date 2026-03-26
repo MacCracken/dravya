@@ -1,3 +1,5 @@
+//! Optional tracing subscriber initialization (feature-gated: `logging`).
+
 /// Initialize tracing subscriber for applications using dravya.
 ///
 /// Uses the `DRAVYA_LOG` environment variable for filtering (defaults to `warn`).

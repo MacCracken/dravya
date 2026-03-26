@@ -612,6 +612,9 @@ impl NeoHookean {
     #[must_use]
     #[inline]
     pub fn strain_energy(&self, i1: f64, j: f64) -> f64 {
+        if j <= hisab::EPSILON_F64 {
+            return 0.0;
+        }
         let i1_bar = j.powf(-2.0 / 3.0) * i1;
         let volumetric = if self.d1.abs() < hisab::EPSILON_F64 {
             0.0
@@ -655,14 +658,23 @@ impl NeoHookean {
 /// 9 independent constants: E1, E2, E3, G12, G23, G13, v12, v23, v13.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Orthotropic3D {
+    /// Young's modulus in 1-direction (Pa).
     pub e1: f64,
+    /// Young's modulus in 2-direction (Pa).
     pub e2: f64,
+    /// Young's modulus in 3-direction (Pa).
     pub e3: f64,
+    /// Shear modulus in 1-2 plane (Pa).
     pub g12: f64,
+    /// Shear modulus in 2-3 plane (Pa).
     pub g23: f64,
+    /// Shear modulus in 1-3 plane (Pa).
     pub g13: f64,
+    /// Poisson's ratio v12 (strain in 2 from stress in 1).
     pub nu12: f64,
+    /// Poisson's ratio v23 (strain in 3 from stress in 2).
     pub nu23: f64,
+    /// Poisson's ratio v13 (strain in 3 from stress in 1).
     pub nu13: f64,
 }
 
@@ -680,7 +692,7 @@ impl Orthotropic3D {
             - self.nu12 * nu21
             - self.nu23 * nu32
             - self.nu13 * nu31
-            - 2.0 * self.nu12 * nu32 * self.nu13;
+            - 2.0 * nu21 * nu32 * self.nu13;
 
         if delta.abs() < hisab::EPSILON_F64 {
             return [[0.0; 6]; 6];
@@ -1325,5 +1337,37 @@ mod tests {
         for (i, row) in c.iter().enumerate() {
             assert!(row[i] > 0.0, "C[{i}][{i}] should be positive");
         }
+    }
+
+    #[test]
+    fn orthotropic_real_composite() {
+        // Carbon/epoxy UD: highly anisotropic (E1 >> E2)
+        let ort = Orthotropic3D {
+            e1: 138e9,
+            e2: 11e9,
+            e3: 11e9,
+            g12: 5.5e9,
+            g23: 3.9e9,
+            g13: 5.5e9,
+            nu12: 0.28,
+            nu23: 0.40,
+            nu13: 0.28,
+        };
+        let c = ort.stiffness_matrix();
+        // C11 should be dominated by E1, much larger than C22
+        assert!(c[0][0] > c[1][1] * 5.0, "C11 >> C22 for UD composite");
+        // All diagonal entries must be positive (positive definite)
+        for (i, row) in c.iter().enumerate() {
+            assert!(
+                row[i] > 0.0,
+                "C[{i}][{i}] should be positive for real composite"
+            );
+        }
+        // C11 should be ~E1 (within 20% for reasonable Poisson ratios)
+        assert!(
+            (c[0][0] - ort.e1).abs() / ort.e1 < 0.2,
+            "C11 should be close to E1, got {}",
+            c[0][0] / 1e9
+        );
     }
 }

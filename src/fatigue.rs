@@ -268,6 +268,7 @@ pub fn marin_reliability_factor(reliability_z: f64) -> f64 {
 ///
 /// `factors` is a slice of all applicable modification factors.
 #[must_use]
+#[inline]
 pub fn marin_corrected_endurance(base_endurance: f64, factors: &[f64]) -> f64 {
     factors.iter().product::<f64>() * base_endurance
 }

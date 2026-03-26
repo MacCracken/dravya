@@ -337,6 +337,7 @@ impl Default for Material {
 /// interpolates for arbitrary temperature queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempDependentMaterial {
+    /// Material name / identifier.
     pub name: Cow<'static, str>,
     /// (temperature_K, material_at_that_temperature) pairs,
     /// sorted by ascending temperature.
