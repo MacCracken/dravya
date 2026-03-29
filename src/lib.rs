@@ -88,10 +88,13 @@ pub use composite::{
 // Bridge
 pub use bridge::{
     bone_density_to_yield_strength, bone_density_to_youngs_modulus, bone_safety_factor,
-    collision_to_contact_stress, impact_to_fracture_volume, muscle_force_to_tendon_stress,
-    temperature_to_thermal_strain, tendon_strain_to_force, thermal_gradient_to_stress,
-    velocity_to_strain_rate,
+    collision_to_contact_stress, e_field_to_piezo_stress, grain_size_to_toughness_scale,
+    impact_to_fracture_volume, magnetic_to_magnetostrictive_strain, mineral_fractions_to_density,
+    muscle_force_to_tendon_stress, temperature_to_thermal_strain, tendon_strain_to_force,
+    thermal_gradient_to_stress, velocity_to_strain_rate,
 };
+/// Integration APIs for downstream consumers (soorat rendering).
+pub mod integration;
 
 // Fracture
 pub use fracture::{

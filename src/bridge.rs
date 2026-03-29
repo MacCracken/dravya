@@ -142,6 +142,65 @@ pub fn thermal_gradient_to_stress(
     youngs_modulus_pa * expansion_coeff_per_k * gradient_k_per_m * length_m
 }
 
+// ── Bijli bridges (electromagnetism) ───────────────────────────────────────
+
+/// Convert electric field strength (V/m) to piezoelectric stress (Pa).
+///
+/// σ = e × E, where e is the piezoelectric stress constant (C/m²).
+/// Typical PZT: e ≈ 5–25 C/m².
+#[must_use]
+#[inline]
+pub fn e_field_to_piezo_stress(e_field_v_m: f64, piezo_coeff_c_m2: f64) -> f64 {
+    e_field_v_m * piezo_coeff_c_m2
+}
+
+/// Convert magnetic flux density (T) to magnetostrictive strain.
+///
+/// ε = (3/2) × λ_s × (B/B_sat)² for cubic symmetry.
+#[must_use]
+#[inline]
+pub fn magnetic_to_magnetostrictive_strain(
+    flux_density_t: f64,
+    saturation_magnetostriction: f64,
+    saturation_flux_t: f64,
+) -> f64 {
+    if saturation_flux_t <= 0.0 {
+        return 0.0;
+    }
+    let ratio = flux_density_t / saturation_flux_t;
+    1.5 * saturation_magnetostriction * ratio * ratio
+}
+
+// ── Khanij bridges (geology) ──────────────────────────────────────────────
+
+/// Convert mineral composition to bulk material density (kg/m³).
+///
+/// Weighted average: ρ = Σ(f_i × ρ_i) where f_i is volume fraction.
+#[must_use]
+pub fn mineral_fractions_to_density(fractions: &[f64], densities_kg_m3: &[f64]) -> f64 {
+    let n = fractions.len().min(densities_kg_m3.len());
+    let mut sum = 0.0;
+    let mut frac_sum = 0.0;
+    for i in 0..n {
+        sum += fractions[i] * densities_kg_m3[i];
+        frac_sum += fractions[i];
+    }
+    if frac_sum > 0.0 { sum / frac_sum } else { 0.0 }
+}
+
+/// Convert grain size (mm) to estimated fracture toughness scaling factor.
+///
+/// Hall-Petch-like: K_Ic ∝ d^(-1/2). Returns a dimensionless scale
+/// relative to 1mm grain size.
+#[must_use]
+#[inline]
+pub fn grain_size_to_toughness_scale(grain_size_mm: f64) -> f64 {
+    if grain_size_mm <= 0.0 {
+        return 0.0;
+    }
+    (1.0 / grain_size_mm).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +291,57 @@ mod tests {
     fn thermal_stress_basic() {
         let s = thermal_gradient_to_stress(10.0, 200e9, 12e-6, 1.0);
         assert!((s - 24_000_000.0).abs() < 1.0);
+    }
+
+    // ── Bijli ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn piezo_stress_basic() {
+        let s = e_field_to_piezo_stress(1000.0, 15.0);
+        assert!((s - 15000.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn magnetostriction_iron() {
+        let e = magnetic_to_magnetostrictive_strain(1.0, 35e-6, 2.15);
+        let expected = 1.5 * 35e-6 * (1.0 / 2.15_f64).powi(2);
+        assert!((e - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn magnetostriction_zero_saturation() {
+        assert_eq!(magnetic_to_magnetostrictive_strain(1.0, 35e-6, 0.0), 0.0);
+    }
+
+    // ── Khanij ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn mineral_density_quartz_feldspar() {
+        // 60% quartz (2650), 40% feldspar (2600) → ~2630
+        let rho = mineral_fractions_to_density(&[0.6, 0.4], &[2650.0, 2600.0]);
+        assert!((rho - 2630.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn mineral_density_empty() {
+        assert_eq!(mineral_fractions_to_density(&[], &[]), 0.0);
+    }
+
+    #[test]
+    fn grain_size_toughness_1mm() {
+        let s = grain_size_to_toughness_scale(1.0);
+        assert!((s - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn grain_size_toughness_finer_is_tougher() {
+        let fine = grain_size_to_toughness_scale(0.1);
+        let coarse = grain_size_to_toughness_scale(1.0);
+        assert!(fine > coarse);
+    }
+
+    #[test]
+    fn grain_size_zero() {
+        assert_eq!(grain_size_to_toughness_scale(0.0), 0.0);
     }
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0]
+
+### Added
+- **bridge** — bijli (piezoelectric stress, magnetostrictive strain), khanij (mineral fractions to density, grain size to toughness)
+- **integration/soorat** — feature-gated `soorat-compat` module with visualization data structures: `StressFieldVisualization` (scalar heatmap), `DeformationVisualization` (displacement field with display scaling), `FractureVisualization` (crack path with SIF), `FatigueDamageMap` (damage fraction grid)
+
+### Updated
+- hisab 1.1.0 -> 1.3.0, ushma 1.0.0 -> 1.3.0, zerocopy 0.8.47 -> 0.8.48
+
 ## [1.1.0]
 
 ### Added
