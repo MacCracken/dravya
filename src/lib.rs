@@ -8,6 +8,7 @@
 //! Built on [`hisab`] for math.
 
 pub mod beam;
+pub mod bridge;
 pub mod composite;
 pub mod constitutive;
 pub mod elastic;
@@ -82,6 +83,14 @@ pub use composite::{
     abd_inverse, abd_matrix, hashin_failure, max_strain_failure_index, max_stress_failure_index,
     progressive_failure, transform_stress_to_material, tsai_hill_failure_index,
     tsai_wu_failure_index, tsai_wu_failure_index_custom,
+};
+
+// Bridge
+pub use bridge::{
+    bone_density_to_yield_strength, bone_density_to_youngs_modulus, bone_safety_factor,
+    collision_to_contact_stress, impact_to_fracture_volume, muscle_force_to_tendon_stress,
+    temperature_to_thermal_strain, tendon_strain_to_force, thermal_gradient_to_stress,
+    velocity_to_strain_rate,
 };
 
 // Fracture

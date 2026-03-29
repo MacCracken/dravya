@@ -52,6 +52,22 @@
 - ~~Bilinear hardening (elastic-plastic with tangent modulus)~~ done
 - ~~Temperature-dependent material properties~~ done (TempDependentMaterial with linear interpolation)
 
+## Cross-Crate Bridges
+
+- [ ] `bridge.rs` module — primitive-value conversions for cross-crate material science
+- [ ] **impetus bridge**: collision force (N), contact area (m²) → stress (Pa); impact velocity → strain rate (1/s)
+- [ ] **ushma bridge**: temperature (K) → Young's modulus scaling (thermal softening); thermal strain → deformation
+- [ ] **bijli bridge**: E-field (V/m) → piezoelectric strain; magnetic flux (T) → magnetostrictive stress
+- [ ] **khanij bridge**: mineral composition → bulk material properties (density, stiffness); grain size → fracture toughness
+
+## Soorat Integration
+
+- [ ] `integration/soorat.rs` module — feature-gated `soorat-compat`
+- [ ] **Stress/strain field**: 2D/3D grid of stress tensor magnitudes (von Mises, principal) for heatmap rendering
+- [ ] **Deformed geometry**: displacement field applied to mesh vertices for deformed shape rendering
+- [ ] **Fracture surface**: crack path coordinates and propagation data for line/surface rendering
+- [ ] **Fatigue map**: cycle count / damage fraction grid for color-coded surface rendering
+
 ## v1.0.0 Criteria — MET
 - API frozen
 - Zero unwrap/panic in library code

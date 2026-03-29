@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.0]
+
+### Added
+- **bridge** — cross-crate primitive-value bridges for sharira (bone density to Young's modulus, bone yield strength, tendon stress, tendon force, bone safety factor, impact fracture volume), impetus (collision contact stress, velocity to strain rate), ushma (thermal strain, thermal gradient to stress)
+
 ## [1.0.0] - 2026-03-26
 
 ### Performance
